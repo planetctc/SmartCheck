@@ -9,7 +9,7 @@
     "start": "electron .",
     "start:mock": "cross-env SMARTDISK_MOCK=1 electron .",
     "build:helper": "cmake -S helper -B helper/build -A x64 && cmake --build helper/build --config Release",
-    "dist": "npm run build:helper && electron-builder --win nsis --x64"
+    "dist": "npm run build:helper && electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
     "cross-env": "7.0.3",
