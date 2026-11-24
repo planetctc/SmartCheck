@@ -20,5 +20,5 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - uses: actions/upload-artifact@v4
         with:
-          name: SmartDisk-Setup
-          path: dist/SmartDisk-Setup-*.exe
+          name: smartDisk-Setup
+          path: dist/smartDisk-Setup-*.exe

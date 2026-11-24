@@ -1,15 +1,15 @@
 {
   "name": "smartdisk",
-  "productName": "SmartDisk",
-  "version": "0.1.0",
-  "description": "店用硬盘健康检测工具",
+  "productName": "smartDisk",
+  "version": "0.2.0",
+  "description": "smartDisk - 硬盘健康检测",
   "main": "app/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
     "start:mock": "cross-env SMARTDISK_MOCK=1 electron .",
     "build:helper": "cmake -S helper -B helper/build -A x64 && cmake --build helper/build --config Release",
-    "dist": "npm run build:helper && electron-builder --win nsis --x64"
+    "dist": "npm run build:helper && electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
     "cross-env": "7.0.3",
@@ -17,15 +17,29 @@
     "electron-builder": "25.1.8"
   },
   "build": {
-    "appId": "com.smartdisk.app",
-    "productName": "SmartDisk",
-    "files": ["app/**/*", "package.json"],
+    "appId": "my.planetcomputer.smartdisk",
+    "productName": "smartDisk",
+    "files": [
+      "app/**/*",
+      "package.json"
+    ],
     "extraResources": [
-      { "from": "helper/build/Release/smartdisk-helper.exe", "to": "helper/smartdisk-helper.exe" }
+      {
+        "from": "helper/build/Release/smartdisk-helper.exe",
+        "to": "helper/smartdisk-helper.exe"
+      }
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
-      "requestedExecutionLevel": "requireAdministrator"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "requestedExecutionLevel": "requireAdministrator",
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -33,8 +47,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "SmartDisk",
-      "artifactName": "SmartDisk-Setup-${version}.exe"
-    }
-  }
+      "shortcutName": "smartDisk",
+      "artifactName": "smartDisk-Setup-${version}.${ext}",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "copyright": "Copyright (c) 2026 PLANET COMPUTER TECHNOLOGY CENTRE. All rights reserved."
+  },
+  "author": "PLANET COMPUTER TECHNOLOGY CENTRE"
 }

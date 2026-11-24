@@ -11,11 +11,16 @@ function color(s) { return `var(--${s || 'unknown'})`; }
 function num(n) { return n == null ? '-' : Number(n).toLocaleString(); }
 
 // ---- skins ----
+const LIGHT_THEMES = ['planet', 'light'];
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.tone = LIGHT_THEMES.includes(t) ? 'light' : 'dark';
   try { localStorage.setItem('theme', t); } catch {}
 }
-try { const t = localStorage.getItem('theme'); if (t) { $('#theme').value = t; applyTheme(t); } } catch {}
+let saved = null;
+try { saved = localStorage.getItem('theme'); } catch {}
+if (saved && document.querySelector(`#theme option[value="${saved}"]`)) $('#theme').value = saved;
+applyTheme($('#theme').value);
 $('#theme').addEventListener('change', e => applyTheme(e.target.value));
 
 // ---- pieces ----
@@ -133,4 +138,8 @@ async function scan() {
   finally { $('#refresh').disabled = false; }
 }
 $('#refresh').addEventListener('click', scan);
+$('#aboutBtn').addEventListener('click', async () => {
+  try { $('#ver').textContent = 'v' + (await window.smartdisk.version()); } catch {}
+  $('#about').showModal();
+});
 scan();

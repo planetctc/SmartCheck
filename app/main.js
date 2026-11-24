@@ -34,7 +34,8 @@ function scanDisks() {
 function createWindow() {
   const win = new BrowserWindow({
     width: 980, height: 680, minWidth: 820, minHeight: 560,
-    title: 'SmartDisk',
+    title: 'smartDisk',
+    icon: path.join(__dirname, 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
@@ -42,6 +43,7 @@ function createWindow() {
 }
 
 ipcMain.handle('disks:scan', () => scanDisks());
+ipcMain.handle('app:version', () => app.getVersion());
 
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => app.quit());
