@@ -105,3 +105,15 @@ dialog#about { background: var(--panel); color: var(--text); border: 1px solid v
 dialog#about::backdrop { background: rgba(0,0,0,.45); }
 dialog#about h2 { margin: 6px 0 10px; }
 dialog#about .about-icon { width: 72px; height: 72px; }
+
+.row-btns { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+.row-btns form { margin: 0; }
+dialog.form-dlg { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 16px; width: 440px; padding: 22px 24px; }
+dialog.form-dlg::backdrop { background: rgba(0,0,0,.45); }
+dialog.form-dlg h2 { margin: 0 0 12px; font-size: 18px; }
+dialog.form-dlg label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; color: var(--muted); font-size: 12px; }
+dialog.form-dlg input, dialog.form-dlg textarea { font: inherit; font-size: 14px; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; resize: vertical; }
+dialog.form-dlg input:focus, dialog.form-dlg textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+dialog.form-dlg details { margin: 4px 0 6px; }
+dialog.form-dlg summary { cursor: pointer; color: var(--accent); margin-bottom: 8px; font-size: 13px; }
+dialog.form-dlg .row-btns { justify-content: flex-end; }

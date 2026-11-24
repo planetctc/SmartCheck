@@ -138,6 +138,43 @@ async function scan() {
   finally { $('#refresh').disabled = false; }
 }
 $('#refresh').addEventListener('click', scan);
+$('#updBtn').addEventListener('click', () => window.smartdisk.checkUpdate());
+
+// ---- PDF report ----
+const SHOP_FIELDS = ['shopName', 'shopAddress', 'shopContact'];
+$('#reportBtn').addEventListener('click', async () => {
+  const f = $('#reportForm');
+  try {
+    const s = await window.smartdisk.settings();
+    for (const k of SHOP_FIELDS) f.elements[k].value = s[k] || '';
+    f.elements.technician.value = s.technician || '';
+  } catch {}
+  $('#reportMsg').textContent = '';
+  $('#report').showModal();
+  f.elements.customer.focus();
+});
+$('#reportForm').addEventListener('submit', async (e) => {
+  if (e.submitter?.value !== 'ok') return;
+  e.preventDefault();
+  const f = e.target;
+  const form = {
+    customer: f.elements.customer.value.trim(),
+    orderNo: f.elements.orderNo.value.trim(),
+    technician: f.elements.technician.value.trim(),
+    note: f.elements.note.value.trim(),
+    shop: Object.fromEntries(SHOP_FIELDS.map(k => [k, f.elements[k].value.trim()])),
+  };
+  $('#reportGo').disabled = true;
+  $('#reportMsg').textContent = '正在生成…';
+  try {
+    const r = await window.smartdisk.makeReport(form);
+    if (r.ok) { $('#report').close(); f.elements.customer.value = ''; f.elements.orderNo.value = ''; f.elements.note.value = ''; }
+    else $('#reportMsg').textContent = r.canceled ? '' : '生成失败';
+  } catch (err) {
+    $('#reportMsg').textContent = '生成失败：' + (err?.message || err);
+  } finally { $('#reportGo').disabled = false; }
+});
+
 $('#aboutBtn').addEventListener('click', async () => {
   try { $('#ver').textContent = 'v' + (await window.smartdisk.version()); } catch {}
   $('#about').showModal();
