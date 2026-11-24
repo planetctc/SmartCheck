@@ -39,6 +39,7 @@ function testLines(d) {
     const r = b.results || {};
     out.push(`<div class="test"><span>${B('测速', 'Speed')} (${esc(b.letter)})</span>
       ${B('顺序读', 'Seq R')} <b>${fmtMb(r.seqRead?.mbps)}</b> · ${B('顺序写', 'Seq W')} <b>${fmtMb(r.seqWrite?.mbps)}</b> ·
+      ${r.seqQ1Read ? `1M Q1 ${L('读/写', 'R/W')} <b>${fmtMb(r.seqQ1Read?.mbps)}</b> / <b>${fmtMb(r.seqQ1Write?.mbps)}</b> ·` : ''}
       4K Q32 ${L('读/写', 'R/W')} <b>${fmtMb(r.rnd4kQ32Read?.mbps)}</b> / <b>${fmtMb(r.rnd4kQ32Write?.mbps)}</b> ·
       4K Q1 ${L('读/写', 'R/W')} <b>${fmtMb(r.rnd4kQ1Read?.mbps)}</b> / <b>${fmtMb(r.rnd4kQ1Write?.mbps)}</b> MB/s</div>`);
   }

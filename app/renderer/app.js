@@ -108,8 +108,8 @@ function rawTable(d, s) {
 }
 
 // ---- benchmark / surface scan ----
-const BENCH_ROWS = () => [[L('顺序 1M Q8', 'Seq 1M Q8'), 'seqRead', 'seqWrite'], [L('随机 4K Q32', 'Random 4K Q32'), 'rnd4kQ32Read', 'rnd4kQ32Write'], [L('随机 4K Q1', 'Random 4K Q1'), 'rnd4kQ1Read', 'rnd4kQ1Write']];
-const PHASE_TEXT = () => ({ prepare: L('准备测试文件', 'Preparing test file'), seqRead: L('顺序读取', 'Sequential read'), seqWrite: L('顺序写入', 'Sequential write'), rnd4kQ32Read: L('4K 随机读取 (Q32)', '4K random read (Q32)'), rnd4kQ32Write: L('4K 随机写入 (Q32)', '4K random write (Q32)'), rnd4kQ1Read: L('4K 随机读取 (Q1)', '4K random read (Q1)'), rnd4kQ1Write: L('4K 随机写入 (Q1)', '4K random write (Q1)') });
+const BENCH_ROWS = () => [[L('顺序 1M Q8', 'Seq 1M Q8'), 'seqRead', 'seqWrite'], [L('顺序 1M Q1', 'Seq 1M Q1'), 'seqQ1Read', 'seqQ1Write'], [L('随机 4K Q32', 'Random 4K Q32'), 'rnd4kQ32Read', 'rnd4kQ32Write'], [L('随机 4K Q1', 'Random 4K Q1'), 'rnd4kQ1Read', 'rnd4kQ1Write']];
+const PHASE_TEXT = () => ({ prepare: L('准备测试文件', 'Preparing test file'), seqRead: L('顺序读取', 'Sequential read'), seqWrite: L('顺序写入', 'Sequential write'), seqQ1Read: L('顺序读取 (Q1)', 'Sequential read (Q1)'), seqQ1Write: L('顺序写入 (Q1)', 'Sequential write (Q1)'), rnd4kQ32Read: L('4K 随机读取 (Q32)', '4K random read (Q32)'), rnd4kQ32Write: L('4K 随机写入 (Q32)', '4K random write (Q32)'), rnd4kQ1Read: L('4K 随机读取 (Q1)', '4K random read (Q1)'), rnd4kQ1Write: L('4K 随机写入 (Q1)', '4K random write (Q1)') });
 const tests = {};   // disk key -> { bench, scan }, mirrors main's results plus live progress
 let running = null; // { kind, key }
 let monitorState = null;  // baseline per disk from the background monitor
@@ -132,7 +132,7 @@ function benchCard(d, t) {
   let foot;
   if (busy) foot = `<div class="tool-status"><span class="spin"></span>${esc(PHASE_TEXT()[b?.phase] || L('准备中', 'Starting'))}…</div><button class="cancel">${L('停止', 'Stop')}</button>`;
   else if (!letter) foot = `<div class="muted small">${L('这块硬盘没有分区（盘符），无法测速。', 'This drive has no partition (drive letter), so it cannot be benchmarked.')}</div>`;
-  else foot = `<div class="muted small">${b?.status === 'done' ? L(`${esc(b.letter)} 盘 · ${new Date(b.finishedAt).toLocaleTimeString()} 测完`, `Drive ${esc(b.letter)} · finished ${new Date(b.finishedAt).toLocaleTimeString()}`) : b?.error ? `<span class="st-bad">${L('测速失败：', 'Benchmark failed: ')}${esc(b.error === 'not enough free space' ? L(`${letter} 盘空间不足 1.3 GB`, `${letter} has less than 1.3 GB free`) : b.error)}</span>` : L(`在 ${esc(letter)} 盘写入 1 GB 临时文件，约 1 分钟，测完自动删除。`, `Writes a 1 GB temporary file on ${esc(letter)}, about 1 minute, deleted afterwards.`)}</div>
+  else foot = `<div class="muted small">${b?.status === 'done' ? L(`${esc(b.letter)} 盘 · ${new Date(b.finishedAt).toLocaleTimeString()} 测完`, `Drive ${esc(b.letter)} · finished ${new Date(b.finishedAt).toLocaleTimeString()}`) : b?.error ? `<span class="st-bad">${L('测速失败：', 'Benchmark failed: ')}${esc(b.error === 'not enough free space' ? L(`${letter} 盘空间不足 1.3 GB`, `${letter} has less than 1.3 GB free`) : b.error)}</span>` : L(`在 ${esc(letter)} 盘写入 1 GB 临时文件，约 1 分半钟，测完自动删除。`, `Writes a 1 GB temporary file on ${esc(letter)}, about 1.5 minutes, deleted afterwards.`)}</div>
       <button class="go" data-kind="bench" ${running ? 'disabled' : ''}>${b?.status === 'done' ? L('重新测速', 'Run again') : L('开始测速', 'Start benchmark')}</button>`;
   return `<div class="tool"><h3>${L('硬盘测速', 'Benchmark')} <small class="muted">MB/s</small></h3>
     <table class="bench"><thead><tr><th></th><th class="r">${L('读取', 'Read')}</th><th class="r">${L('写入', 'Write')}</th></tr></thead><tbody>${rows}</tbody></table>

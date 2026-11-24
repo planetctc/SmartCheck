@@ -1,6 +1,11 @@
 smartDisk 版本记录 / Version history
 （最新的在最上面 / newest first）
 
+0.8.0  2026-11-24
+  - 测速改用 Microsoft DiskSpd（和 CrystalDiskMark 同一个测速引擎），参数照 CrystalDiskMark 默认设置：
+    1 GB 随机资料测试文件、每项 5 秒、每项之间休息 5 秒、不经过 Windows 缓存。结果应该和 CrystalDiskMark 很接近。
+  - 测速多了「顺序 1M Q1」一行（和 CrystalDiskMark 一样共 4 行），报告也会写上。测速时间约 1 分半钟。
+
 0.7.1  2026-11-24
   - 测速更准：测试文件改成整段不重复的随机资料（之前重复同一段资料，有些 SSD 会因此测得偏高），
     每项测试之间休息 5 秒（和 CrystalDiskMark 一样）。测速时间约 1 分钟。
