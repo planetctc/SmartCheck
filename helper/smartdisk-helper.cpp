@@ -165,6 +165,34 @@ static bool readSata(HANDLE h, Disk& d) {
     return d.smartOk;
 }
 
+// ---------- NVMe Identify Controller (real serial / model / firmware) ----------
+// StorageDeviceProperty often returns the EUI-64/NGUID instead of the serial number for NVMe drives.
+static std::string fixedStr(const BYTE* p, size_t n) { return trim(std::string((const char*)p, n)); }
+
+static void readNvmeIdentify(HANDLE h, Disk& d) {
+    const DWORD idSize = 4096;
+    const DWORD bufLen = FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters) + sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA) + idSize;
+    std::vector<BYTE> buf(bufLen);
+    auto* q = (STORAGE_PROPERTY_QUERY*)buf.data();
+    auto* p = (STORAGE_PROTOCOL_SPECIFIC_DATA*)q->AdditionalParameters;
+    q->PropertyId = StorageAdapterProtocolSpecificProperty;
+    q->QueryType = PropertyStandardQuery;
+    p->ProtocolType = ProtocolTypeNvme;
+    p->DataType = NVMeDataTypeIdentify;
+    p->ProtocolDataRequestValue = NVME_IDENTIFY_CNS_CONTROLLER;
+    p->ProtocolDataRequestSubValue = 0;
+    p->ProtocolDataOffset = sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA);
+    p->ProtocolDataLength = idSize;
+    DWORD ret = 0;
+    if (!DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, buf.data(), bufLen, buf.data(), bufLen, &ret, nullptr)) return;
+    auto* desc = (STORAGE_PROTOCOL_DATA_DESCRIPTOR*)buf.data();
+    const BYTE* id = (const BYTE*)&desc->ProtocolSpecificData + desc->ProtocolSpecificData.ProtocolDataOffset;
+    std::string sn = fixedStr(id + 4, 20), mn = fixedStr(id + 24, 40), fr = fixedStr(id + 64, 8);
+    if (!sn.empty()) d.serial = sn;
+    if (!mn.empty()) d.model = mn;
+    if (!fr.empty()) d.firmware = fr;
+}
+
 // ---------- NVMe health log (page 0x02) ----------
 static uint64_t le64(const BYTE* p) { uint64_t v = 0; for (int i = 7; i >= 0; --i) v = (v << 8) | p[i]; return v; }
 
@@ -289,7 +317,7 @@ int main(int argc, char** argv) {
         STORAGE_BUS_TYPE bus;
         queryDescriptor(h, d, bus);
         querySize(h, d);
-        if (d.bus == "nvme") readNvme(h, d);
+        if (d.bus == "nvme") { readNvmeIdentify(h, d); readNvme(h, d); }
         else if (d.bus == "usb") { if (!readSata(h, d)) d.error = "USB bridge: SMART not supported"; }
         else readSata(h, d);
         CloseHandle(h);
