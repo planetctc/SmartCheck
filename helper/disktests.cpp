@@ -39,12 +39,16 @@ static uint64_t next() { rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17; re
 struct IoResult { double mbps = 0, iops = 0; bool ok = true; };
 
 // Keeps `qd` overlapped requests in flight for `seconds`. Sequential tests walk the file and wrap around.
-static IoResult runIo(HANDLE h, uint64_t fileSize, DWORD block, int qd, bool write, bool sequential, double seconds, BYTE* buf) {
+// Writes take their data from a large random pool (rotating offset) so no two blocks repeat;
+// reads land in per-slot buffers.
+const size_t POOL = size_t(64) << 20;
+
+static IoResult runIo(HANDLE h, uint64_t fileSize, DWORD block, int qd, bool write, bool sequential, double seconds, BYTE* buf, BYTE* pool) {
     std::vector<OVERLAPPED> ov(qd);
     std::vector<HANDLE> ev(qd);
     for (int i = 0; i < qd; ++i) { ev[i] = CreateEventW(nullptr, TRUE, FALSE, nullptr); }
     const uint64_t blocks = fileSize / block;
-    uint64_t seq = 0, bytes = 0, ops = 0;
+    uint64_t seq = 0, bytes = 0, ops = 0, poolOff = 0;
     IoResult r;
 
     auto issue = [&](int i) -> bool {
@@ -55,6 +59,7 @@ static IoResult runIo(HANDLE h, uint64_t fileSize, DWORD block, int qd, bool wri
         ResetEvent(ev[i]);
         ov[i].Offset = DWORD(off); ov[i].OffsetHigh = DWORD(off >> 32);
         BYTE* p = buf + size_t(i) * block;
+        if (write) { p = pool + poolOff; poolOff = (poolOff + block) % (POOL - block + 1) / 4096 * 4096; }
         BOOL ok = write ? WriteFile(h, p, block, nullptr, &ov[i]) : ReadFile(h, p, block, nullptr, &ov[i]);
         return ok || GetLastError() == ERROR_IO_PENDING;
     };
@@ -105,9 +110,10 @@ int runBench(int argc, char** argv) {
     const DWORD maxBlock = 1 << 20; const int maxQd = 32;
     BYTE* buf = (BYTE*)VirtualAlloc(nullptr, size_t(maxBlock) * 8 > size_t(4096) * maxQd ? size_t(maxBlock) * 8 : size_t(4096) * maxQd,
                                     MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-    if (!buf) { CloseHandle(h); emit("{\"type\":\"error\",\"message\":\"out of memory\"}"); return 1; }
+    BYTE* pool = (BYTE*)VirtualAlloc(nullptr, POOL, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!buf || !pool) { CloseHandle(h); emit("{\"type\":\"error\",\"message\":\"out of memory\"}"); return 1; }
     // Random content so compressing controllers can't cheat.
-    for (size_t i = 0; i < size_t(maxBlock) * 8 / 8; ++i) ((uint64_t*)buf)[i] = next();
+    for (size_t i = 0; i < POOL / 8; ++i) ((uint64_t*)pool)[i] = next();
 
     emit("{\"type\":\"start\",\"sizeMiB\":%llu,\"tests\":6}", sizeMiB);
 
@@ -119,7 +125,9 @@ int runBench(int argc, char** argv) {
         for (uint64_t off = 0; off < fileSize; off += maxBlock) {
             o.Offset = DWORD(off); o.OffsetHigh = DWORD(off >> 32); ResetEvent(o.hEvent);
             DWORD got = 0;
-            BOOL ok = WriteFile(h, buf, maxBlock, nullptr, &o);
+            BYTE* src = pool + size_t(off % POOL);
+            if (off && off % POOL == 0) for (size_t i = 0; i < POOL / 8; ++i) ((uint64_t*)pool)[i] ^= next();
+            BOOL ok = WriteFile(h, src, maxBlock, nullptr, &o);
             if (!ok && GetLastError() != ERROR_IO_PENDING) { emit("{\"type\":\"error\",\"message\":\"write failed (%lu)\"}", GetLastError()); CloseHandle(o.hEvent); CloseHandle(h); return 1; }
             if (!GetOverlappedResult(h, &o, &got, TRUE)) { emit("{\"type\":\"error\",\"message\":\"write failed (%lu)\"}", GetLastError()); CloseHandle(o.hEvent); CloseHandle(h); return 1; }
             if (now() - last > 0.5) { last = now(); emit("{\"type\":\"progress\",\"phase\":\"prepare\",\"pct\":%.1f}", 100.0 * off / fileSize); }
@@ -138,12 +146,13 @@ int runBench(int argc, char** argv) {
     };
     for (const auto& t : tests) {
         emit("{\"type\":\"phase\",\"name\":\"%s\"}", t.name);
-        Sleep(500);   // let the drive settle between tests
-        IoResult r = runIo(h, fileSize, t.block, t.qd, t.write, t.seq, 5.0, buf);
+        Sleep(5000);  // rest between tests, like CrystalDiskMark's default interval
+        IoResult r = runIo(h, fileSize, t.block, t.qd, t.write, t.seq, 5.0, buf, pool);
         emit("{\"type\":\"result\",\"test\":\"%s\",\"mbps\":%.1f,\"iops\":%.0f,\"ok\":%s}", t.name, r.mbps, r.iops, r.ok ? "true" : "false");
     }
     CloseHandle(h);   // DELETE_ON_CLOSE removes the file
     VirtualFree(buf, 0, MEM_RELEASE);
+    VirtualFree(pool, 0, MEM_RELEASE);
     emit("{\"type\":\"done\"}");
     return 0;
 }
