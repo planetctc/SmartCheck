@@ -1,6 +1,10 @@
 smartDisk 版本记录 / Version history
 （最新的在最上面 / newest first）
 
+0.8.1  2026-11-25
+  - 测速某一项失败时会自动再试一次；仍然失败就显示「失败」（之前会显示 0.00），鼠标指着可看原因。
+  - 每次测速的详细记录存在 C:\ProgramData\smartDisk\bench-log.txt，方便排查问题。
+
 0.8.0  2026-11-24
   - 测速改用 Microsoft DiskSpd（和 CrystalDiskMark 同一个测速引擎），参数照 CrystalDiskMark 默认设置：
     1 GB 随机资料测试文件、每项 5 秒、每项之间休息 5 秒、不经过 Windows 缓存。结果应该和 CrystalDiskMark 很接近。
