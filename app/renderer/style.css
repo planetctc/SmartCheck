@@ -89,7 +89,7 @@ button, select { font: inherit; color: var(--text); background: var(--panel-2); 
 details.raw { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
 details.raw summary { cursor: pointer; padding: 12px 16px; font-weight: 600; }
 .attr-list { display: grid; grid-template-columns: 1fr; padding: 0 8px 8px; }
-.attr { display: grid; grid-template-columns: 1fr 110px 70px 70px 70px; gap: 8px; align-items: center; padding: 8px; border-radius: 8px; }
+.attr { display: grid; grid-template-columns: 1fr 190px 70px 70px 70px; gap: 8px; align-items: center; padding: 8px; border-radius: 8px; }
 .attr:nth-child(even) { background: var(--panel-2); }
 .attr.hdr { color: var(--muted); font-size: 12px; background: none; }
 .attr .n small { color: var(--muted); margin-left: 6px; font-size: 11px; }

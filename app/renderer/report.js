@@ -79,7 +79,7 @@ window.renderReport = (p) => {
     <h2>检测结果 Summary</h2>
     <table>
       <thead><tr><th>#</th><th>型号 Model</th><th>接口</th><th class="r">容量</th><th class="r">温度</th><th class="r">健康度</th><th>状态 Status</th></tr></thead>
-      <tbody>${disks.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.model) || '-'}</td><td>${BUS[d.bus] || esc(d.bus)}</td>
+      <tbody>${disks.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.model) || '-'}${d.letters?.length ? ' (' + esc(d.letters.join(' ')) + ')' : ''}</td><td>${BUS[d.bus] || esc(d.bus)}</td>
         <td class="r">${size(d.sizeBytes)}</td><td class="r">${d.summary.temperatureC != null ? d.summary.temperatureC + ' °C' : '-'}</td>
         <td class="r">${d.summary.health != null ? d.summary.health + '%' : '-'}</td><td>${pill(d.summary.status)}</td></tr>`).join('')}</tbody>
     </table>

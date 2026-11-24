@@ -11,7 +11,29 @@ const ATA_NAMES = {
   195: 'ECC 修正次数', 196: '重映射事件数', 197: '待映射扇区数', 198: '无法修正扇区数',
   199: 'UltraDMA CRC 错误', 200: '写入错误率', 231: 'SSD 剩余寿命', 232: '可用保留空间',
   233: '介质磨损指标', 241: '累计写入', 242: '累计读取',
+  2: '吞吐性能', 8: '寻道时间性能', 11: '校准重试次数', 13: '软读取错误率', 22: '氦气含量',
+  160: '无法修正扇区', 161: '有效备用块', 163: '初始坏块', 164: '总擦写次数', 165: '最大擦写次数',
+  166: '最小擦写次数', 167: '平均坏块', 168: '最大擦写寿命', 175: '断电保护故障', 176: '擦除失败次数',
+  178: '已用保留块', 179: '已用保留块总数', 189: '高飞写入', 191: '震动感应错误', 201: '软读取错误',
+  206: '磁头飞行高度', 220: '盘片偏移', 222: '磁头加载时间', 223: '加载重试次数', 224: '加载摩擦力',
+  225: '加载周期次数', 226: '磁头加载耗时', 235: '断电恢复次数', 240: '磁头飞行时间', 246: '累计写入',
+  250: '读取重试次数', 252: '坏块计数', 254: '自由落体保护',
 };
+
+// Some raw values pack several numbers into the 6 raw bytes; show only the meaningful part.
+const TEMP_IDS = [190, 194];
+function rawValue(id, raw) {
+  if (TEMP_IDS.includes(id)) return raw % 256;              // byte 0 = current °C (others: min/max)
+  if (id === 9) return raw % 4294967296;                     // hours in the low 32 bits
+  return raw;
+}
+function rawText(id, raw) {
+  if (TEMP_IDS.includes(id)) {
+    const cur = raw % 256, lo = Math.floor(raw / 65536) % 256, hi = Math.floor(raw / 4294967296) % 256;
+    return hi > cur && lo > 0 && lo <= cur ? `${cur} °C（最低 ${lo} / 最高 ${hi}）` : `${cur} °C`;
+  }
+  return Number(rawValue(id, raw)).toLocaleString();
+}
 
 // Attributes whose raw value > 0 indicates physical damage.
 const CRITICAL_RAW = [5, 196, 197, 198];
@@ -50,12 +72,12 @@ function evaluateAta(disk) {
   return {
     health: clamp(status === 'bad' ? Math.min(health, 10) : health),
     status, reasons,
-    temperatureC: t ? Number(t.raw & 0xff) : null,
-    powerOnHours: byId[9] ? Number(byId[9].raw & 0xffffffff) : null,
+    temperatureC: t ? rawValue(t.id, t.raw) : null,
+    powerOnHours: byId[9] ? rawValue(9, byId[9].raw) : null,
     powerCycles: byId[12] ? byId[12].raw : null,
     rows: attrs.map(a => ({
       id: a.id, name: a.name, current: a.current, worst: a.worst,
-      threshold: a.threshold, raw: a.raw, state: a.state,
+      threshold: a.threshold, raw: a.raw, rawText: rawText(a.id, a.raw), state: a.state,
     })),
   };
 }
@@ -109,4 +131,4 @@ function evaluate(disk) {
   return disk.nvme ? evaluateNvme(disk) : evaluateAta(disk);
 }
 
-module.exports = { evaluate, attrName };
+module.exports = { evaluate, attrName, rawValue };

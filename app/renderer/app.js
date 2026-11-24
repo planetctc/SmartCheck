@@ -8,6 +8,7 @@ let current = 0;
 function esc(v) { return String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function size(bytes) { if (!bytes) return '-'; return bytes >= 1e12 ? (bytes / 1e12).toFixed(2) + ' TB' : Math.round(bytes / 1e9) + ' GB'; }
 function color(s) { return `var(--${s || 'unknown'})`; }
+function letters(d) { return d.letters?.length ? d.letters.join(' ') : ''; }
 function num(n) { return n == null ? '-' : Number(n).toLocaleString(); }
 
 // ---- skins ----
@@ -79,7 +80,7 @@ function rawTable(d, s) {
   return `<details class="raw"><summary>详细数据（SMART 属性 ${s.rows.length} 项）</summary><div class="attr-list">
     <div class="attr hdr"><span>属性</span><span class="r">原始值</span><span class="r">当前</span><span class="r">阈值</span><span class="r">状态</span></div>
     ${s.rows.map(r => `<div class="attr"><span class="n">${esc(r.name)}<small>#${r.id}</small></span>
-      <span class="r">${num(r.raw)}</span><span class="r">${r.current}</span><span class="r">${r.threshold}</span>
+      <span class="r">${esc(r.rawText)}</span><span class="r">${r.current}</span><span class="r">${r.threshold}</span>
       <span class="r st-${r.state}">${STATE[r.state]}</span></div>`).join('')}
   </div></details>`;
 }
@@ -90,7 +91,7 @@ function renderList() {
     const s = d.summary;
     return `<button class="disk ${i === current ? 'active' : ''}" data-i="${i}">
       <span class="bar" style="background:${color(s.status)}"></span>
-      <span><div class="m">${esc(d.model) || '未知型号'}</div><div class="s">${esc(BUS_TEXT[d.bus] || d.bus)} · ${size(d.sizeBytes)}${s.temperatureC != null ? ' · ' + s.temperatureC + '°C' : ''}</div></span>
+      <span><div class="m">${esc(d.model) || '未知型号'}</div><div class="s">${letters(d) ? esc(letters(d)) + ' · ' : ''}${esc(BUS_TEXT[d.bus] || d.bus)} · ${size(d.sizeBytes)}${s.temperatureC != null ? ' · ' + s.temperatureC + '°C' : ''}</div></span>
       <span class="pct" style="color:${color(s.status)}">${s.health != null ? s.health + '%' : '--'}</span>
     </button>`;
   }).join('');
@@ -102,7 +103,7 @@ function renderDetail() {
   const s = d.summary;
   const head = `<div class="head"><h1>${esc(d.model) || '未知型号'}</h1>
     <div class="meta"><span class="chip" style="color:${color(s.status)}">${STATUS_TEXT[s.status]}</span>
-    ${esc(BUS_TEXT[d.bus] || d.bus)} · ${size(d.sizeBytes)} · 序列号 ${esc(d.serial) || '-'} · 固件 ${esc(d.firmware) || '-'} · 磁盘 ${d.index}</div></div>`;
+    ${esc(BUS_TEXT[d.bus] || d.bus)} · ${size(d.sizeBytes)} · 序列号 ${esc(d.serial) || '-'} · 固件 ${esc(d.firmware) || '-'} · 磁盘 ${d.index}${letters(d) ? ' · 盘符 ' + esc(letters(d)) : ''}</div></div>`;
 
   if (!d.smartOk) {
     $('#detail').innerHTML = head + `<div class="hero"><div class="gauge-card">${gauge(null, 'unknown')}<div class="verdict">${STATUS_TEXT.unknown}</div></div>

@@ -56,6 +56,7 @@ struct NvmeHealth {
 struct Disk {
     int index = 0;
     std::string model, serial, firmware, bus;   // bus: "sata" | "nvme" | "usb" | "other"
+    std::vector<std::string> letters;           // drive letters on this disk, e.g. "C:"
     uint64_t sizeBytes = 0;
     bool smartOk = false;
     std::string error;
@@ -214,6 +215,27 @@ static bool readNvme(HANDLE h, Disk& d) {
     return true;
 }
 
+// ---------- drive letters ----------
+// Map each mounted letter to its physical disk number (volumes spanning several disks are skipped).
+static void assignLetters(std::vector<Disk>& disks) {
+    DWORD mask = GetLogicalDrives();
+    for (int i = 0; i < 26; ++i) {
+        if (!(mask & (1u << i))) continue;
+        wchar_t root[] = { wchar_t(L'A' + i), L':', L'\\', 0 };
+        UINT type = GetDriveTypeW(root);
+        if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE) continue;
+        wchar_t vol[] = { L'\\', L'\\', L'.', L'\\', wchar_t(L'A' + i), L':', 0 };
+        HANDLE h = CreateFileW(vol, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        STORAGE_DEVICE_NUMBER sdn{}; DWORD ret = 0;
+        if (DeviceIoControl(h, IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0, &sdn, sizeof(sdn), &ret, nullptr)) {
+            for (auto& d : disks)
+                if (d.index == (int)sdn.DeviceNumber) d.letters.push_back(std::string(1, char('A' + i)) + ":");
+        }
+        CloseHandle(h);
+    }
+}
+
 // ---------- output ----------
 static void writeDisk(std::ostringstream& o, const Disk& d, const char* ind) {
     o << ind << "{\"index\":" << d.index
@@ -221,7 +243,10 @@ static void writeDisk(std::ostringstream& o, const Disk& d, const char* ind) {
       << ",\"serial\":\"" << jsonEscape(d.serial) << "\""
       << ",\"firmware\":\"" << jsonEscape(d.firmware) << "\""
       << ",\"bus\":\"" << d.bus << "\""
-      << ",\"sizeBytes\":" << d.sizeBytes
+      << ",\"sizeBytes\":" << d.sizeBytes;
+    o << ",\"letters\":[";
+    for (size_t i = 0; i < d.letters.size(); ++i) o << (i ? "," : "") << "\"" << d.letters[i] << "\"";
+    o << "]"
       << ",\"smartOk\":" << (d.smartOk ? "true" : "false");
     if (!d.error.empty()) o << ",\"error\":\"" << jsonEscape(d.error) << "\"";
     if (!d.attrs.empty()) {
@@ -270,6 +295,8 @@ int main(int argc, char** argv) {
         CloseHandle(h);
         disks.push_back(d);
     }
+
+    assignLetters(disks);
 
     std::ostringstream o;
     const char* nl = pretty ? "\n" : "";
