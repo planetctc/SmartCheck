@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="slate">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>SmartDisk</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">◆</span> SmartDisk <small>硬盘健康检测</small></div>
+    <div class="actions">
+      <select id="theme" title="皮肤">
+        <option value="slate">石墨（默认）</option>
+        <option value="light">明亮</option>
+        <option value="ocean">海蓝</option>
+        <option value="forest">森林</option>
+        <option value="sunset">落日</option>
+      </select>
+      <button id="refresh">重新检测</button>
+    </div>
+  </header>
+
+  <nav id="tabs" class="tabs"></nav>
+
+  <main id="detail" class="detail">
+    <p class="muted">正在读取硬盘信息…</p>
+  </main>
+
+  <footer class="footer">
+    <span id="scanTime"></span>
+    <span id="notice"></span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
