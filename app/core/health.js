@@ -1,4 +1,5 @@
 const { firmwareWarning } = require('./firmware');
+const { L } = require('../renderer/i18n');
 
 // Health rules shared by the UI and (later) the PDF report / remote HTTP endpoint.
 // Input: one disk object from smartdisk-helper JSON. Output: normalized summary.
@@ -22,6 +23,25 @@ const ATA_NAMES = {
   250: '读取重试次数', 252: '坏块计数', 254: '自由落体保护',
 };
 
+const ATA_NAMES_EN = {
+  1: 'Read Error Rate', 2: 'Throughput Performance', 3: 'Spin-Up Time', 4: 'Start/Stop Count', 5: 'Reallocated Sectors Count',
+  7: 'Seek Error Rate', 8: 'Seek Time Performance', 9: 'Power-On Hours', 10: 'Spin Retry Count', 11: 'Calibration Retry Count',
+  12: 'Power Cycle Count', 13: 'Soft Read Error Rate', 22: 'Helium Level', 160: 'Uncorrectable Sectors', 161: 'Valid Spare Blocks',
+  163: 'Initial Bad Blocks', 164: 'Total Erase Count', 165: 'Max Erase Count', 166: 'Min Erase Count', 167: 'Average Bad Blocks',
+  168: 'Max Erase Count Spec', 169: 'Remaining Life', 170: 'Available Reserved Blocks', 171: 'Program Fail Count',
+  172: 'Erase Fail Count', 173: 'Average Erase Count', 174: 'Unexpected Power Loss Count', 175: 'Power Loss Protection Failure',
+  176: 'Erase Fail Count', 177: 'Wear Leveling Count', 178: 'Used Reserved Blocks', 179: 'Used Reserved Blocks Total',
+  180: 'Unused Reserved Blocks', 181: 'Program Fail Count Total', 182: 'Erase Fail Count Total', 183: 'SATA Downshift Count',
+  184: 'End-to-End Error', 187: 'Reported Uncorrectable Errors', 188: 'Command Timeout', 189: 'High Fly Writes',
+  190: 'Airflow Temperature', 191: 'G-Sense Error Rate', 192: 'Power-Off Retract Count', 193: 'Load Cycle Count',
+  194: 'Temperature', 195: 'ECC Corrected Count', 196: 'Reallocation Event Count', 197: 'Current Pending Sectors',
+  198: 'Uncorrectable Sector Count', 199: 'UltraDMA CRC Errors', 200: 'Write Error Rate', 201: 'Soft Read Error Rate',
+  206: 'Flying Height', 220: 'Disk Shift', 222: 'Loaded Hours', 223: 'Load Retry Count', 224: 'Load Friction',
+  225: 'Load Cycle Count', 226: 'Load-in Time', 231: 'SSD Life Left', 232: 'Available Reserved Space',
+  233: 'Media Wearout Indicator', 235: 'Power Loss Recovery Count', 240: 'Head Flying Hours', 241: 'Total LBAs Written',
+  242: 'Total LBAs Read', 246: 'Total Host Writes', 250: 'Read Error Retry Rate', 252: 'Bad Block Count', 254: 'Free Fall Protection',
+};
+
 // Some raw values pack several numbers into the 6 raw bytes; show only the meaningful part.
 const TEMP_IDS = [190, 194];
 function rawValue(id, raw) {
@@ -32,7 +52,7 @@ function rawValue(id, raw) {
 function rawText(id, raw) {
   if (TEMP_IDS.includes(id)) {
     const cur = raw % 256, lo = Math.floor(raw / 65536) % 256, hi = Math.floor(raw / 4294967296) % 256;
-    return hi > cur && lo > 0 && lo <= cur ? `${cur} °C（最低 ${lo} / 最高 ${hi}）` : `${cur} °C`;
+    return hi > cur && lo > 0 && lo <= cur ? L(`${cur} °C（最低 ${lo} / 最高 ${hi}）`, `${cur} °C (min ${lo} / max ${hi})`) : `${cur} °C`;
   }
   return Number(rawValue(id, raw)).toLocaleString();
 }
@@ -40,7 +60,7 @@ function rawText(id, raw) {
 // Attributes whose raw value > 0 indicates physical damage.
 const CRITICAL_RAW = [5, 196, 197, 198];
 
-function attrName(id) { return ATA_NAMES[id] || `厂商自定义 (${id})`; }
+function attrName(id) { return L(ATA_NAMES[id], ATA_NAMES_EN[id]) || L(`厂商自定义 (${id})`, `Vendor specific (${id})`); }
 
 function evaluateAta(disk) {
   const attrs = disk.ata?.attributes || [];
@@ -54,7 +74,7 @@ function evaluateAta(disk) {
     a.state = 'ok';
     if (a.threshold > 0 && a.current <= a.threshold) {
       a.state = 'bad'; status = 'bad';
-      reasons.push(`${a.name} 低于阈值`);
+      reasons.push(L(`${a.name} 低于阈值`, `${a.name} below threshold`));
     }
   }
   for (const id of CRITICAL_RAW) {
@@ -88,29 +108,29 @@ function evaluateNvme(disk) {
   const n = disk.nvme;
   let status = 'good';
   const reasons = [];
-  if (n.criticalWarning) { status = 'bad'; reasons.push(`严重警告位: 0x${n.criticalWarning.toString(16)}`); }
-  if (n.availableSpare < n.spareThreshold) { status = 'bad'; reasons.push('备用空间低于阈值'); }
-  if (n.mediaErrors > 0 && status === 'good') { status = 'warn'; reasons.push(`介质错误: ${n.mediaErrors}`); }
-  if (n.percentageUsed >= 90 && status === 'good') { status = 'warn'; reasons.push('寿命已用超过 90%'); }
+  if (n.criticalWarning) { status = 'bad'; reasons.push(L('严重警告位', 'Critical warning bits') + `: 0x${n.criticalWarning.toString(16)}`); }
+  if (n.availableSpare < n.spareThreshold) { status = 'bad'; reasons.push(L('备用空间低于阈值', 'Available spare below threshold')); }
+  if (n.mediaErrors > 0 && status === 'good') { status = 'warn'; reasons.push(L('介质错误', 'Media errors') + `: ${n.mediaErrors}`); }
+  if (n.percentageUsed >= 90 && status === 'good') { status = 'warn'; reasons.push(L('寿命已用超过 90%', 'Over 90% of rated life used')); }
 
   const tb = units => (units * 512000 / 1e12).toFixed(2) + ' TB'; // 1 unit = 1000 * 512 bytes
   const st = v => (v === 'bad' ? 'bad' : v === 'warn' ? 'warn' : 'ok');
   const rows = [
-    ['01', '严重警告', n.criticalWarning, n.criticalWarning ? 'bad' : 'ok'],
-    ['02', '温度', `${n.temperatureC} °C`, n.temperatureC >= 70 ? 'warn' : 'ok'],
-    ['03', '可用备用空间', `${n.availableSpare} %`, n.availableSpare < n.spareThreshold ? 'bad' : 'ok'],
-    ['04', '备用空间阈值', `${n.spareThreshold} %`, 'ok'],
-    ['05', '寿命已用', `${n.percentageUsed} %`, n.percentageUsed >= 90 ? 'warn' : 'ok'],
-    ['06', '累计读取', tb(n.dataUnitsRead), 'ok'],
-    ['07', '累计写入', tb(n.dataUnitsWritten), 'ok'],
-    ['08', '主机读命令', n.hostReads, 'ok'],
-    ['09', '主机写命令', n.hostWrites, 'ok'],
-    ['0A', '控制器忙碌时间', `${n.controllerBusyMinutes} 分钟`, 'ok'],
-    ['0B', '通电次数', n.powerCycles, 'ok'],
-    ['0C', '通电时间', `${n.powerOnHours} 小时`, 'ok'],
-    ['0D', '意外断电次数', n.unsafeShutdowns, 'ok'],
-    ['0E', '介质与数据完整性错误', n.mediaErrors, n.mediaErrors ? 'warn' : 'ok'],
-    ['0F', '错误日志条目数', n.errorLogEntries, 'ok'],
+    ['01', L('严重警告', 'Critical warning'), n.criticalWarning, n.criticalWarning ? 'bad' : 'ok'],
+    ['02', L('温度', 'Temperature'), `${n.temperatureC} °C`, n.temperatureC >= 70 ? 'warn' : 'ok'],
+    ['03', L('可用备用空间', 'Available spare'), `${n.availableSpare} %`, n.availableSpare < n.spareThreshold ? 'bad' : 'ok'],
+    ['04', L('备用空间阈值', 'Spare threshold'), `${n.spareThreshold} %`, 'ok'],
+    ['05', L('寿命已用', 'Percentage used'), `${n.percentageUsed} %`, n.percentageUsed >= 90 ? 'warn' : 'ok'],
+    ['06', L('累计读取', 'Data read'), tb(n.dataUnitsRead), 'ok'],
+    ['07', L('累计写入', 'Data written'), tb(n.dataUnitsWritten), 'ok'],
+    ['08', L('主机读命令', 'Host read commands'), n.hostReads, 'ok'],
+    ['09', L('主机写命令', 'Host write commands'), n.hostWrites, 'ok'],
+    ['0A', L('控制器忙碌时间', 'Controller busy time'), `${n.controllerBusyMinutes} ${L('分钟', 'min')}`, 'ok'],
+    ['0B', L('通电次数', 'Power cycles'), n.powerCycles, 'ok'],
+    ['0C', L('通电时间', 'Power-on hours'), `${n.powerOnHours} ${L('小时', 'h')}`, 'ok'],
+    ['0D', L('意外断电次数', 'Unsafe shutdowns'), n.unsafeShutdowns, 'ok'],
+    ['0E', L('介质与数据完整性错误', 'Media and data integrity errors'), n.mediaErrors, n.mediaErrors ? 'warn' : 'ok'],
+    ['0F', L('错误日志条目数', 'Error log entries'), n.errorLogEntries, 'ok'],
   ].map(([id, name, value, state]) => ({ id, name, value, state: st(state) }));
 
   const health = clamp(100 - n.percentageUsed);
@@ -135,7 +155,8 @@ function linkInfo(disk) {
     let note = '', state = 'ok';
     if (l.cur && l.max && l.cur < l.max) {
       state = 'warn';
-      note = `硬盘支持 ${SATA_GBPS[l.max]}，目前只跑 ${SATA_GBPS[l.cur]}。请检查 SATA 线，或换到主板的 6 Gb/s 接口。`;
+      note = L(`硬盘支持 ${SATA_GBPS[l.max]}，目前只跑 ${SATA_GBPS[l.cur]}。请检查 SATA 线，或换到主板的 6 Gb/s 接口。`,
+        `The drive supports ${SATA_GBPS[l.max]} but runs at ${SATA_GBPS[l.cur]}. Check the SATA cable or move it to a 6 Gb/s port.`);
     }
     return { text, max: l.max ? `SATA ${SATA_GBPS[l.max]}` : '', note, state };
   }
@@ -144,10 +165,12 @@ function linkInfo(disk) {
   let note = '', state = 'ok';
   if (l.curWidth && l.maxWidth && l.curWidth < l.maxWidth) {
     state = 'warn';
-    note = `只用了 ${l.curWidth} 条通道（支持 ${l.maxWidth} 条），速度会变慢。请检查是否插在共享通道或较低速的 M.2 插槽。`;
+    note = L(`只用了 ${l.curWidth} 条通道（支持 ${l.maxWidth} 条），速度会变慢。请检查是否插在共享通道或较低速的 M.2 插槽。`,
+      `Running on ${l.curWidth} lanes (supports ${l.maxWidth}), so it is slower. Check for a shared-lane or slower M.2 slot.`);
   } else if (l.cur && l.max && l.cur < l.max) {
     state = 'info';
-    note = `SSD 支持 PCIe ${PCIE_GEN[l.max]}，目前是 PCIe ${PCIE_GEN[l.cur]}。可能是主板插槽只支持较低版本，或 SSD 正处于省电状态（测速时再确认）。`;
+    note = L(`SSD 支持 PCIe ${PCIE_GEN[l.max]}，目前是 PCIe ${PCIE_GEN[l.cur]}。可能是主板插槽只支持较低版本，或 SSD 正处于省电状态（测速时再确认）。`,
+      `The SSD supports PCIe ${PCIE_GEN[l.max]} but is at PCIe ${PCIE_GEN[l.cur]}. The slot may be older, or the SSD is in power-saving mode (check during a benchmark).`);
   }
   return { text, max: fmt(l.max, l.maxWidth), note, state };
 }
@@ -156,7 +179,7 @@ function clamp(v) { return Math.max(0, Math.min(100, Math.round(v))); }
 
 function evaluate(disk) {
   const base = !disk.smartOk
-    ? { health: null, status: 'unknown', reasons: [disk.error || '无法读取 SMART'], temperatureC: null, rows: [] }
+    ? { health: null, status: 'unknown', reasons: [disk.error || L('无法读取 SMART', 'SMART could not be read')], temperatureC: null, rows: [] }
     : disk.nvme ? evaluateNvme(disk) : evaluateAta(disk);
   base.link = linkInfo(disk);
   base.firmwareWarning = firmwareWarning(disk);

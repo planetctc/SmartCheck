@@ -1,6 +1,7 @@
 // Whole-PC information for the shop's "出机检测" report: CPU, RAM, GPU, board, Windows activation, battery.
 // Uses PowerShell CIM queries (no admin needed). Returns null fields when something can't be read.
 const { execFile } = require('child_process');
+const { L } = require('../renderer/i18n');
 
 const PS_SCRIPT = String.raw`
 $ErrorActionPreference = 'SilentlyContinue'
@@ -30,7 +31,7 @@ $dsgn = @(One BatteryStaticData 'root\wmi')
 
 const MOCK = {
   computer: { manufacturer: 'PLANET', model: 'Gaming PC', name: 'PLANET-PC-0123' },
-  os: { caption: 'Microsoft Windows 11 Pro', version: '10.0.26100', build: '26100', arch: '64 位' },
+  os: { caption: 'Microsoft Windows 11 Pro', version: '10.0.26100', build: '26100', arch: '64-bit' },
   board: { manufacturer: 'ASUSTeK COMPUTER INC.', product: 'TUF GAMING B760M-PLUS WIFI', bios: '1820', biosDate: '2025-08-12' },
   cpu: [{ name: 'Intel(R) Core(TM) i5-14400F', cores: 10, threads: 16, mhz: 2500 }],
   memory: [
@@ -43,7 +44,8 @@ const MOCK = {
 };
 
 // LicenseStatus values from SoftwareLicensingProduct.
-const LICENSE = { 0: '未授权', 1: '已激活', 2: '宽限期', 3: '宽限期', 4: '非正版宽限期', 5: '需要激活', 6: '宽限期' };
+const LICENSE = () => L({ 0: '未授权', 1: '已激活', 2: '宽限期', 3: '宽限期', 4: '非正版宽限期', 5: '需要激活', 6: '宽限期' },
+  { 0: 'Unlicensed', 1: 'Activated', 2: 'Grace period', 3: 'Grace period', 4: 'Non-genuine grace', 5: 'Needs activation', 6: 'Grace period' });
 
 function summarize(s) {
   const gb = b => Math.round(b / 1073741824);
@@ -56,7 +58,7 @@ function summarize(s) {
     ...s,
     memTotalGB: totalMem ? gb(totalMem) : null,
     memText: (s.memory || []).map(m => `${gb(m.bytes)} GB ${m.mhz ? m.mhz + ' MHz' : ''} ${m.maker || ''} ${m.part || ''}`.replace(/\s+/g, ' ').trim()),
-    activationText: act ? (LICENSE[act.status] || '未知') : '无法读取',
+    activationText: act ? (LICENSE()[act.status] || L('未知', 'Unknown')) : L('无法读取', 'Unavailable'),
     activated: act ? act.status === 1 : null,
     batteryInfo: bat,
   };
