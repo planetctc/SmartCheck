@@ -8,6 +8,16 @@ if (-not (Test-Path (Join-Path $dir '.git'))) {
   git clone --depth 1 --branch $tag https://github.com/microsoft/diskspd.git $dir
 }
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+# DiskSpd's XML profile parser needs ATL, which the GitHub runner's Visual Studio does not include: add it once.
+$vs = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1
+$hasAtl = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.ATL -property installationPath | Select-Object -First 1
+if ($vs -and -not $hasAtl) {
+  Write-Host 'Installing Visual Studio ATL component...'
+  $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+  $p = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList @(
+    'modify', '--installPath', "`"$vs`"", '--add', 'Microsoft.VisualStudio.Component.VC.ATL', '--quiet', '--norestart', '--nocache')
+  if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "ATL install failed ($($p.ExitCode))" }
+}
 $msbuild = & $vswhere -latest -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
 if (-not $msbuild) { throw 'MSBuild not found' }
 $props = Join-Path $PSScriptRoot 'static-crt.props'
