@@ -131,9 +131,9 @@ function benchCard(d, t) {
   const letter = d.letters?.[0];
   const rows = BENCH_ROWS().map(([label, r, w]) => `<tr><td>${label}</td><td class="r">${cell(b?.results?.[r])}</td><td class="r">${cell(b?.results?.[w])}</td></tr>`).join('');
   let foot;
-  if (busy) foot = `<div class="tool-status"><span class="spin"></span>${esc(PHASE_TEXT()[b?.phase] || L('准备中', 'Starting'))}…</div><button class="cancel">${L('停止', 'Stop')}</button>`;
+  if (busy) foot = `<div class="tool-status"><span class="spin"></span>${esc(PHASE_TEXT()[b?.phase] || L('准备中', 'Starting'))}${b?.runs > 1 && b?.phase !== 'prepare' ? (b.run ? ` ${b.run}/${b.runs}` : L('（预热）', ' (warm-up)')) : ''}…</div><button class="cancel">${L('停止', 'Stop')}</button>`;
   else if (!letter) foot = `<div class="muted small">${L('这块硬盘没有分区（盘符），无法测速。', 'This drive has no partition (drive letter), so it cannot be benchmarked.')}</div>`;
-  else foot = `<div class="muted small">${b?.status === 'done' ? L(`${esc(b.letter)} 盘 · ${new Date(b.finishedAt).toLocaleTimeString()} 测完`, `Drive ${esc(b.letter)} · finished ${new Date(b.finishedAt).toLocaleTimeString()}`) : b?.error ? `<span class="st-bad">${L('测速失败：', 'Benchmark failed: ')}${esc(b.error === 'not enough free space' ? L(`${letter} 盘空间不足 1.3 GB`, `${letter} has less than 1.3 GB free`) : b.error)}</span>` : L(`在 ${esc(letter)} 盘写入 1 GB 临时文件，约 1 分半钟，测完自动删除。`, `Writes a 1 GB temporary file on ${esc(letter)}, about 1.5 minutes, deleted afterwards.`)}</div>
+  else foot = `<div class="muted small">${b?.status === 'done' ? L(`${esc(b.letter)} 盘 · ${new Date(b.finishedAt).toLocaleTimeString()} 测完`, `Drive ${esc(b.letter)} · finished ${new Date(b.finishedAt).toLocaleTimeString()}`) : b?.error ? `<span class="st-bad">${L('测速失败：', 'Benchmark failed: ')}${esc(b.error === 'not enough free space' ? L(`${letter} 盘空间不足 1.3 GB`, `${letter} has less than 1.3 GB free`) : b.error)}</span>` : L(`在 ${esc(letter)} 盘写入 1 GB 临时文件，约 3 分半钟，测完自动删除。`, `Writes a 1 GB temporary file on ${esc(letter)}, about 3.5 minutes, deleted afterwards.`)}</div>
       <button class="go" data-kind="bench" ${running ? 'disabled' : ''}>${b?.status === 'done' ? L('重新测速', 'Run again') : L('开始测速', 'Start benchmark')}</button>`;
   return `<div class="tool"><h3>${L('硬盘测速', 'Benchmark')} <small class="muted">MB/s</small></h3>
     <table class="bench"><thead><tr><th></th><th class="r">${L('读取', 'Read')}</th><th class="r">${L('写入', 'Write')}</th></tr></thead><tbody>${rows}</tbody></table>
@@ -196,7 +196,7 @@ function confirmScan(d) {
 window.smartdisk.onTask?.((ev) => {
   const t = (tests[ev.key] ||= {});
   const cur = t[ev.kind] ||= { results: {} };
-  if (ev.type === 'phase') cur.phase = ev.name;
+  if (ev.type === 'phase') { cur.phase = ev.name; cur.run = ev.run; cur.runs = ev.runs; }
   if (ev.type === 'result') cur.results = { ...cur.results, [ev.test]: { mbps: ev.mbps, iops: ev.iops, ok: ev.ok !== false, error: ev.error } };
   if (ev.type === 'start' && ev.kind === 'scan') cur.cells = new Array(ev.cells).fill(-1);
   if (ev.type === 'progress' && ev.kind === 'scan') {
