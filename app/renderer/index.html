@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="slate">
+<html lang="zh-CN" data-theme="planet">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
-  <title>SmartDisk</title>
+  <title>smartDisk</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <aside class="sidebar">
     <div class="brand">
-      <svg viewBox="0 0 24 24" class="logo" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="4"/><circle cx="12" cy="12" r="3.2"/></svg>
-      <div><div class="name">SmartDisk</div><div class="sub">硬盘健康检测</div></div>
+      <img src="img/smartDisk_horizontal.svg" class="logo logo-light" alt="smartDisk">
+      <img src="img/smartDisk_horizontal_dark.svg" class="logo logo-dark" alt="smartDisk">
     </div>
     <div class="side-title">硬盘</div>
     <nav id="diskList" class="disk-list"></nav>
@@ -18,6 +18,7 @@
       <button id="refresh" class="primary">重新检测</button>
       <label class="theme-pick">皮肤
         <select id="theme">
+          <option value="planet">PLANET 蓝</option>
           <option value="slate">石墨</option>
           <option value="light">明亮</option>
           <option value="ocean">海蓝</option>
@@ -27,12 +28,23 @@
       </label>
       <div id="scanTime" class="muted small"></div>
       <div id="notice" class="notice small"></div>
+      <div class="legal small">© 2026 PLANET COMPUTER TECHNOLOGY CENTRE · <button type="button" class="linkbtn" id="aboutBtn">关于</button></div>
     </div>
   </aside>
 
   <main id="detail" class="detail">
     <p class="muted">正在读取硬盘信息…</p>
   </main>
+
+  <dialog id="about">
+    <img src="img/smartDisk_icon.svg" class="about-icon" alt="">
+    <h2>smartDisk <span id="ver" class="muted"></span></h2>
+    <p>硬盘健康检测工具，读取 SATA 硬盘 SMART 数据和 NVMe 健康日志。</p>
+    <p class="muted">smartDisk 由 PLANET COMPUTER TECHNOLOGY CENTRE 开发。</p>
+    <p class="small">© 2026 PLANET COMPUTER TECHNOLOGY CENTRE. This product is the copyright of PLANET COMPUTER TECHNOLOGY CENTRE. All rights reserved.</p>
+    <p class="small"><b>PLANET COMPUTER TECHNOLOGY CENTRE</b><br>Batu Gajah, Perak · WhatsApp +60 12-510 5542 · planetctc@gmail.com</p>
+    <form method="dialog"><button class="primary">关闭</button></form>
+  </dialog>
 
   <script src="app.js"></script>
 </body>

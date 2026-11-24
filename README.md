@@ -1,10 +1,16 @@
-# SmartDisk
+<p align="center"><img src="brand/smartDisk_horizontal.png" alt="smartDisk" width="320"></p>
+
+# smartDisk
 
 店内自用的硬盘健康检测工具（Windows）。
+
+By PLANET COMPUTER TECHNOLOGY CENTRE, Batu Gajah, Perak. WhatsApp +60 12-510 5542, planetctc@gmail.com.
 
 ## 结构
 
 ```
+brand/             logo（alt_drive/ 是另一款硬盘外形的备选）
+build/icon.ico     程序和安装包图标
 helper/            原生检测程序（C++，需管理员权限）
   smartdisk-helper.cpp   枚举 PhysicalDrive0..31，读 SATA SMART / NVMe 健康日志，输出 JSON
   mock.json              非 Windows 或未编译 helper 时使用的演示数据
@@ -31,7 +37,7 @@ npm install
 npm run build:helper     # 编译 helper
 npm start                # 以管理员身份打开终端再运行，才读得到硬盘
 npm run start:mock       # 用演示数据看界面
-npm run dist             # 产出 dist/SmartDisk-Setup-x.y.z.exe
+npm run dist             # 产出 dist/smartDisk-Setup-x.y.z.exe
 ```
 
 ## 已知限制
@@ -39,3 +45,7 @@ npm run dist             # 产出 dist/SmartDisk-Setup-x.y.z.exe
 - USB 外接硬盘盒（JMicron / Realtek / ASMedia 等 SAT 桥接）多数读不到 SMART，第一版只显示提示。
 - RAID / Intel RST 阵列模式下的硬盘可能无法直接读取。
 - 安装包未做代码签名，首次运行 Windows SmartScreen 可能提示，选"仍要运行"即可。
+
+版本记录见 [Ver.txt](Ver.txt)。
+
+© 2026 PLANET COMPUTER TECHNOLOGY CENTRE. All rights reserved.

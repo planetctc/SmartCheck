@@ -1,0 +1,10 @@
+smartDisk 版本记录 / Version history
+（最新的在最上面 / newest first）
+
+0.2.0  2026-11-24
+  - 套用 PLANET 品牌：smartDisk logo、程序图标、安装包图标，默认「PLANET 蓝」皮肤。
+  - 新增「关于」窗口，显示版本、版权和联系方式。
+  - 安装包改名为 smartDisk-Setup-版本号.exe。
+
+0.1.0  2026-11-24
+  - 第一版：读取 SATA SMART 和 NVMe 健康日志，多硬盘切换、健康度、温度、详细数据、多套皮肤。
