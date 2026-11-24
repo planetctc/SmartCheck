@@ -28,7 +28,7 @@ td.r, th.r { text-align: right; }
 
 .disk { border: 1px solid #dbe6f2; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; break-inside: avoid; }
 .disk .hd { display: flex; justify-content: space-between; font-weight: 700; }
-.disk .kv { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; white-space: nowrap; gap: 2px 12px; margin-top: 4px; }
+.disk .kv { display: grid; grid-template-columns: 1.3fr 1.3fr 1fr 1fr; gap: 2px 12px; margin-top: 4px; }
 .disk .kv span { color: #5d7196; margin-right: 4px; }
 .disk .why { margin-top: 4px; color: #b06d00; }
 
@@ -38,3 +38,10 @@ td.r, th.r { text-align: right; }
 .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: auto; padding-top: 28px; }
 .sign div { border-top: 1px solid #12307A; padding-top: 4px; color: #5d7196; }
 .foot { margin-top: 14px; padding-top: 6px; border-top: 1px solid #dbe6f2; font-size: 9.5px; color: #7d8aa5; display: flex; justify-content: space-between; }
+
+table.sys th { width: 120px; background: #f2f7fc; font-size: 11px; }
+table.sys td { font-size: 11px; }
+table.sys .sub { display: block; color: #5d7196; font-size: 10px; }
+table.sys b.ok { color: #17a368; } table.sys b.bad { color: #d63a40; }
+.disk .kv span span { margin: 0; }
+.disk .why.bad { color: #d63a40; }

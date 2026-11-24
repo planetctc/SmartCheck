@@ -1,3 +1,5 @@
+const { firmwareWarning } = require('./firmware');
+
 // Health rules shared by the UI and (later) the PDF report / remote HTTP endpoint.
 // Input: one disk object from smartdisk-helper JSON. Output: normalized summary.
 
@@ -122,13 +124,44 @@ function evaluateNvme(disk) {
   };
 }
 
+// Interface link: what the drive is running at vs what it supports.
+const SATA_GBPS = { 1: '1.5 Gb/s', 2: '3 Gb/s', 3: '6 Gb/s' };
+const PCIE_GEN = { 1: '1.0', 2: '2.0', 3: '3.0', 4: '4.0', 5: '5.0', 6: '6.0' };
+function linkInfo(disk) {
+  const l = disk.link;
+  if (!l) return null;
+  if (l.kind === 'sata') {
+    const text = l.cur ? `SATA ${SATA_GBPS[l.cur]}` : 'SATA';
+    let note = '', state = 'ok';
+    if (l.cur && l.max && l.cur < l.max) {
+      state = 'warn';
+      note = `硬盘支持 ${SATA_GBPS[l.max]}，目前只跑 ${SATA_GBPS[l.cur]}。请检查 SATA 线，或换到主板的 6 Gb/s 接口。`;
+    }
+    return { text, max: l.max ? `SATA ${SATA_GBPS[l.max]}` : '', note, state };
+  }
+  const fmt = (g, w) => g ? `PCIe ${PCIE_GEN[g] || g} x${w || '?'}` : '';
+  const text = fmt(l.cur, l.curWidth) || 'PCIe';
+  let note = '', state = 'ok';
+  if (l.curWidth && l.maxWidth && l.curWidth < l.maxWidth) {
+    state = 'warn';
+    note = `只用了 ${l.curWidth} 条通道（支持 ${l.maxWidth} 条），速度会变慢。请检查是否插在共享通道或较低速的 M.2 插槽。`;
+  } else if (l.cur && l.max && l.cur < l.max) {
+    state = 'info';
+    note = `SSD 支持 PCIe ${PCIE_GEN[l.max]}，目前是 PCIe ${PCIE_GEN[l.cur]}。可能是主板插槽只支持较低版本，或 SSD 正处于省电状态（测速时再确认）。`;
+  }
+  return { text, max: fmt(l.max, l.maxWidth), note, state };
+}
+
 function clamp(v) { return Math.max(0, Math.min(100, Math.round(v))); }
 
 function evaluate(disk) {
-  if (!disk.smartOk) {
-    return { health: null, status: 'unknown', reasons: [disk.error || '无法读取 SMART'], temperatureC: null, rows: [] };
-  }
-  return disk.nvme ? evaluateNvme(disk) : evaluateAta(disk);
+  const base = !disk.smartOk
+    ? { health: null, status: 'unknown', reasons: [disk.error || '无法读取 SMART'], temperatureC: null, rows: [] }
+    : disk.nvme ? evaluateNvme(disk) : evaluateAta(disk);
+  base.link = linkInfo(disk);
+  base.firmwareWarning = firmwareWarning(disk);
+  base.kind = disk.rpm === 1 ? 'SSD' : disk.rpm > 1 ? `HDD ${disk.rpm} RPM` : '';
+  return base;
 }
 
 module.exports = { evaluate, attrName, rawValue };

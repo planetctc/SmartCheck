@@ -28,6 +28,8 @@ function diskDetail(d, i) {
     ['通电时间 POH', s.powerOnHours != null ? num(s.powerOnHours) + ' h' : '-'],
     ['通电次数 Cycles', num(s.powerCycles)],
   ];
+  if (s.kind) kv.push(['类型 Type', esc(s.kind)]);
+  if (s.link) kv.push(['接口速度 Link', esc(s.link.text)]);
   if (d.nvme) {
     const n = d.nvme;
     kv.push(['寿命已用 Used', n.percentageUsed + ' %'], ['可用备用 Spare', n.availableSpare + ' %'],
@@ -39,12 +41,35 @@ function diskDetail(d, i) {
   const why = !d.smartOk
     ? (d.bus === 'usb' ? 'USB 硬盘盒不支持读取 SMART，未检测。' : esc(s.reasons[0] || '无法读取 SMART'))
     : s.reasons.map(esc).join('；');
+  const alerts = [];
+  if (s.firmwareWarning) alerts.push(`<div class="why bad">⚠ ${esc(s.firmwareWarning.text)}</div>`);
+  if (s.link?.note) alerts.push(`<div class="why">⚠ ${esc(s.link.note)}</div>`);
   return `<div class="disk">
     <div class="hd"><span>${i + 1}. ${esc(d.model) || '未知型号'} · ${BUS[d.bus] || esc(d.bus)} · ${size(d.sizeBytes)}</span>
       <span>${s.health != null ? s.health + '%' : '--'} ${pill(s.status)}</span></div>
     <div class="kv">${kv.map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join('')}</div>
     ${why ? `<div class="why">⚠ ${why}</div>` : ''}
+    ${alerts.join('')}
   </div>`;
+}
+
+// Whole-PC section (CPU, RAM, GPU, board, Windows activation, battery).
+function systemSection(sys) {
+  if (!sys || sys.error) return '';
+  const rows = [];
+  const c = sys.computer || {};
+  if (c.manufacturer || c.model) rows.push(['电脑型号 Model', esc([c.manufacturer, c.model].filter(Boolean).join(' '))]);
+  if (sys.os?.caption) rows.push(['系统 Windows', esc(`${sys.os.caption} ${sys.os.arch || ''} (Build ${sys.os.build || '-'})`)]);
+  rows.push(['激活 Activation', sys.activated === true ? `<b class="ok">${esc(sys.activationText)}</b>${sys.activation?.channel ? ' · ' + esc(sys.activation.channel) : ''}`
+    : sys.activated === false ? `<b class="bad">${esc(sys.activationText)}</b>` : esc(sys.activationText)]);
+  (sys.cpu || []).forEach(p => rows.push(['处理器 CPU', esc(`${p.name} · ${p.cores} 核 ${p.threads} 线程`)]));
+  if (sys.memTotalGB) rows.push(['内存 RAM', `${sys.memTotalGB} GB<span class="sub">${(sys.memText || []).map(esc).join('<br>')}</span>`]);
+  (sys.gpu || []).forEach(g => rows.push(['显卡 GPU', esc(g.name) + (g.driver ? `<span class="sub">驱动 ${esc(g.driver)}</span>` : '')]));
+  const b = sys.board || {};
+  if (b.product) rows.push(['主板 Board', esc(`${b.manufacturer || ''} ${b.product}`) + (b.bios ? `<span class="sub">BIOS ${esc(b.bios)}${b.biosDate ? ' (' + esc(b.biosDate) + ')' : ''}</span>` : '')]);
+  const bat = sys.batteryInfo;
+  if (bat) rows.push(['电池 Battery', `损耗 ${bat.wear}%<span class="sub">设计 ${num(bat.design)} mWh · 当前满电 ${num(bat.full)} mWh</span>`]);
+  return `<h2>整机信息 System</h2><table class="sys">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>`;
 }
 
 window.renderReport = (p) => {
@@ -64,7 +89,7 @@ window.renderReport = (p) => {
       <div class="shop"><b>${esc(st.shopName)}</b>${esc(st.shopAddress)}<br>${esc(st.shopContact)}</div>
     </div>
 
-    <h1>硬盘健康检测报告<small>Disk Health Report</small></h1>
+    <h1>电脑检测报告<small>PC Inspection Report</small></h1>
     <div class="meta">
       <div><span>客户 Customer</span>${esc(p.customer) || '-'}</div>
       <div><span>单号 Ref No.</span>${esc(p.orderNo) || '-'}</div>
@@ -76,7 +101,9 @@ window.renderReport = (p) => {
 
     <div class="verdict ${STATUS[ov][1]}"><span>${ovText}</span><small>共 ${disks.length} 块硬盘 · ${disks.length} drive(s)</small></div>
 
-    <h2>检测结果 Summary</h2>
+    ${systemSection(p.scan.system)}
+
+    <h2>硬盘检测结果 Disk Summary</h2>
     <table>
       <thead><tr><th>#</th><th>型号 Model</th><th>接口</th><th class="r">容量</th><th class="r">温度</th><th class="r">健康度</th><th>状态 Status</th></tr></thead>
       <tbody>${disks.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.model) || '-'}${d.letters?.length ? ' (' + esc(d.letters.join(' ')) + ')' : ''}</td><td>${BUS[d.bus] || esc(d.bus)}</td>

@@ -78,7 +78,8 @@ button, select { font: inherit; color: var(--text); background: var(--panel-2); 
 .verdict { font-size: 16px; font-weight: 600; margin-top: 6px; }
 .reasons { margin: 8px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 12px; text-align: center; }
 
-.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.metric .v { overflow: hidden; text-overflow: ellipsis; }
 .metric { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
 .metric .k { color: var(--muted); font-size: 12px; }
 .metric .v { white-space: nowrap; font-size: 22px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
@@ -117,3 +118,13 @@ dialog.form-dlg input:focus, dialog.form-dlg textarea:focus { outline: 2px solid
 dialog.form-dlg details { margin: 4px 0 6px; }
 dialog.form-dlg summary { cursor: pointer; color: var(--accent); margin-bottom: 8px; font-size: 13px; }
 dialog.form-dlg .row-btns { justify-content: flex-end; }
+
+.banner { margin-top: 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid; font-size: 13px; }
+.banner.warn { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.banner.bad { color: var(--bad); border-color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.banner.info { color: var(--muted); border-color: var(--border); background: var(--panel); }
+.sys-card { margin-top: 18px; padding-top: 8px; }
+.sys-card .attr.nv { grid-template-columns: 120px 1fr; }
+.sys-card .attr.nv .r { text-align: left; }
+.disk.sys { margin-bottom: 6px; }
+.metric.txt .v { font-size: 17px; line-height: 33px; }
