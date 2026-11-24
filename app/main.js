@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { execFile, spawn } = require('child_process');
 const { mockTask } = require('./core/mocktask');
+const diskspd = require('./core/diskspd');
 const { evaluate } = require('./core/health');
 const { checkUpdate, checkUpdateSilent } = require('./core/updater');
 const monitor = require('./core/monitor');
@@ -18,6 +19,11 @@ let lastScan = null;
 function helperPath() {
   if (app.isPackaged) return path.join(process.resourcesPath, 'helper', 'smartdisk-helper.exe');
   return path.join(__dirname, '..', 'helper', 'build', 'Release', 'smartdisk-helper.exe');
+}
+
+function diskspdPath() {
+  if (app.isPackaged) return path.join(process.resourcesPath, 'helper', 'diskspd.exe');
+  return path.join(__dirname, '..', 'third_party', 'diskspd', 'diskspd_vs', 'x64', 'Release', 'diskspd.exe');
 }
 
 // Single data entry point. The PDF report (and a future Tailscale HTTP endpoint) reuse this.
@@ -95,6 +101,13 @@ function startTask(kind, diskIndex, letter) {
   if (useMock) {
     const stop = mockTask(kind, disk, onEvent, (st) => finish(st));
     task = { cancel: () => { stop(); finish('canceled'); } };
+    return { ok: true, key };
+  }
+  // Benchmark: DiskSpd (same engine as CrystalDiskMark) when it is bundled, else the helper's own benchmark.
+  const dspd = diskspdPath();
+  if (kind === 'bench' && fs.existsSync(dspd)) {
+    const run = diskspd.runBench({ exe: dspd, letter, onEvent, onEnd: (st) => finish(st) });
+    task = { cancel: () => run.cancel() };
     return { ok: true, key };
   }
   const child = spawn(exe, args, { windowsHide: true });

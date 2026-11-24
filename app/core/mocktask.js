@@ -6,10 +6,10 @@ function mockTask(kind, disk, onEvent, onEnd) {
 
   if (kind === 'bench') {
     const speeds = disk.bus === 'nvme'
-      ? { seqRead: [6900, 0], seqWrite: [5000, 0], rnd4kQ32Read: [2600, 635000], rnd4kQ32Write: [2300, 561000], rnd4kQ1Read: [85, 20700], rnd4kQ1Write: [240, 58600] }
-      : ssd ? { seqRead: [560, 0], seqWrite: [520, 0], rnd4kQ32Read: [390, 95000], rnd4kQ32Write: [350, 85000], rnd4kQ1Read: [45, 11000], rnd4kQ1Write: [120, 29000] }
-        : { seqRead: [210, 0], seqWrite: [205, 0], rnd4kQ32Read: [1.9, 460], rnd4kQ32Write: [2.1, 510], rnd4kQ1Read: [0.7, 170], rnd4kQ1Write: [1.6, 390] };
-    onEvent({ type: 'start', sizeMiB: 1024, tests: 6 });
+      ? { seqRead: [6900, 0], seqWrite: [5000, 0], seqQ1Read: [2900, 0], seqQ1Write: [2600, 0], rnd4kQ32Read: [2600, 635000], rnd4kQ32Write: [2300, 561000], rnd4kQ1Read: [85, 20700], rnd4kQ1Write: [240, 58600] }
+      : ssd ? { seqRead: [560, 0], seqWrite: [520, 0], seqQ1Read: [520, 0], seqQ1Write: [480, 0], rnd4kQ32Read: [390, 95000], rnd4kQ32Write: [350, 85000], rnd4kQ1Read: [45, 11000], rnd4kQ1Write: [120, 29000] }
+        : { seqRead: [210, 0], seqWrite: [205, 0], seqQ1Read: [200, 0], seqQ1Write: [198, 0], rnd4kQ32Read: [1.9, 460], rnd4kQ32Write: [2.1, 510], rnd4kQ1Read: [0.7, 170], rnd4kQ1Write: [1.6, 390] };
+    onEvent({ type: 'start', sizeMiB: 1024, tests: 8 });
     onEvent({ type: 'phase', name: 'prepare' });
     let t = 400;
     for (const [name, [mbps, iops]] of Object.entries(speeds)) {
