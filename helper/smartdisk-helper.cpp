@@ -3,14 +3,28 @@
 // NVMe: IOCTL_STORAGE_QUERY_PROPERTY, protocol-specific log page 0x02 (SMART / Health Information).
 // Must run elevated (raw disk handles need administrator rights).
 //
+// Also reports the interface link (SATA 1.5/3/6 Gb/s via IDENTIFY, PCIe gen/lanes via the NVMe controller's devnode).
+//
 // Usage: smartdisk-helper.exe            -> JSON for all disks on stdout
 //        smartdisk-helper.exe --pretty   -> same, indented
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <initguid.h>   // before winioctl.h so GUID_DEVINTERFACE_DISK and the DEVPROPKEYs below are defined here
 #include <winioctl.h>
 #include <ntddscsi.h>
 #include <nvme.h>
+#include <devpropdef.h>
+#include <setupapi.h>
+#include <cfgmgr32.h>
+#pragma comment(lib, "setupapi.lib")
+#pragma comment(lib, "cfgmgr32.lib")
+
+// PCI Express link properties (same values as pciprop.h).
+DEFINE_DEVPROPKEY(SD_PciCurrentLinkSpeed, 0x3ab22e31, 0x8264, 0x4b4e, 0x9a, 0xf5, 0xa8, 0xd2, 0xd8, 0xe3, 0x3e, 0x62, 9);
+DEFINE_DEVPROPKEY(SD_PciCurrentLinkWidth, 0x3ab22e31, 0x8264, 0x4b4e, 0x9a, 0xf5, 0xa8, 0xd2, 0xd8, 0xe3, 0x3e, 0x62, 10);
+DEFINE_DEVPROPKEY(SD_PciMaxLinkSpeed,     0x3ab22e31, 0x8264, 0x4b4e, 0x9a, 0xf5, 0xa8, 0xd2, 0xd8, 0xe3, 0x3e, 0x62, 11);
+DEFINE_DEVPROPKEY(SD_PciMaxLinkWidth,     0x3ab22e31, 0x8264, 0x4b4e, 0x9a, 0xf5, 0xa8, 0xd2, 0xd8, 0xe3, 0x3e, 0x62, 12);
 
 #include <cstdint>
 #include <cstdio>
@@ -63,6 +77,10 @@ struct Disk {
     std::vector<SmartAttr> attrs;
     bool hasNvme = false;
     NvmeHealth nvme{};
+    // Interface link: SATA generation (1/2/3 = 1.5/3/6 Gb/s) or PCIe generation + lanes. 0 = unknown.
+    int sataCur = 0, sataMax = 0;
+    int pcieCur = 0, pcieCurWidth = 0, pcieMax = 0, pcieMaxWidth = 0;
+    int rpm = 0;                                // 1 = SSD (non-rotating), >1 = RPM, 0 = unknown
 };
 
 // ---------- helpers ----------
@@ -121,6 +139,32 @@ static bool ataSmartCmd(HANDLE h, BYTE feature, BYTE out[512]) {
     return true;
 }
 
+// IDENTIFY DEVICE: SATA link speed (words 76/77) and rotation rate (word 217).
+static void ataIdentify(HANDLE h, Disk& d) {
+    AtaBuf b{};
+    b.apt.Length = sizeof(ATA_PASS_THROUGH_EX);
+    b.apt.AtaFlags = ATA_FLAGS_DATA_IN | ATA_FLAGS_DRDY_REQUIRED;
+    b.apt.DataTransferLength = 512;
+    b.apt.TimeOutValue = 5;
+    b.apt.DataBufferOffset = offsetof(AtaBuf, data);
+    b.apt.CurrentTaskFile[5] = 0xA0;
+    b.apt.CurrentTaskFile[6] = 0xEC;    // IDENTIFY DEVICE
+    DWORD ret = 0;
+    if (!DeviceIoControl(h, IOCTL_ATA_PASS_THROUGH, &b, sizeof(b), &b, sizeof(b), &ret, nullptr)) return;
+    if (b.apt.CurrentTaskFile[6] & 0x01) return;
+    const WORD* w = (const WORD*)b.data;
+    WORD w76 = w[76], w77 = w[77], w217 = w[217];
+    if (w76 != 0 && w76 != 0xFFFF) {
+        for (int g = 3; g >= 1; --g) if (w76 & (1 << g)) { d.sataMax = g; break; }
+    }
+    if (w77 != 0 && w77 != 0xFFFF) {
+        int cur = (w77 >> 1) & 7;
+        if (cur >= 1 && cur <= 3) d.sataCur = cur;
+    }
+    if (w217 == 1) d.rpm = 1;
+    else if (w217 >= 0x0401 && w217 <= 0xFFFE) d.rpm = w217;
+}
+
 // Fallback for controllers that refuse ATA pass-through but support the legacy SMART IOCTL.
 static bool legacySmartCmd(HANDLE h, BYTE feature, BYTE out[512]) {
     std::vector<BYTE> buf(sizeof(SENDCMDOUTPARAMS) + 512);
@@ -140,6 +184,7 @@ static bool legacySmartCmd(HANDLE h, BYTE feature, BYTE out[512]) {
 }
 
 static bool readSata(HANDLE h, Disk& d) {
+    ataIdentify(h, d);
     BYTE values[512]{}, thresh[512]{};
     bool ok = ataSmartCmd(h, 0xD0, values) && ataSmartCmd(h, 0xD1, thresh);
     if (!ok) ok = legacySmartCmd(h, 0xD0, values) && legacySmartCmd(h, 0xD1, thresh);
@@ -243,6 +288,46 @@ static bool readNvme(HANDLE h, Disk& d) {
     return true;
 }
 
+// ---------- PCIe link of the controller each disk hangs off (NVMe) ----------
+static ULONG devUlong(DEVINST inst, const DEVPROPKEY& key) {
+    DEVPROPTYPE type = 0; ULONG val = 0, size = sizeof(val);
+    if (CM_Get_DevNode_PropertyW(inst, &key, &type, (PBYTE)&val, &size, 0) != CR_SUCCESS || type != DEVPROP_TYPE_UINT32) return 0;
+    return val;
+}
+
+static void assignPcieLinks(std::vector<Disk>& disks) {
+    HDEVINFO set = SetupDiGetClassDevsW(&GUID_DEVINTERFACE_DISK, nullptr, nullptr, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if (set == INVALID_HANDLE_VALUE) return;
+    SP_DEVICE_INTERFACE_DATA ifd{ sizeof(ifd) };
+    for (DWORD i = 0; SetupDiEnumDeviceInterfaces(set, nullptr, &GUID_DEVINTERFACE_DISK, i, &ifd); ++i) {
+        DWORD need = 0;
+        SetupDiGetDeviceInterfaceDetailW(set, &ifd, nullptr, 0, &need, nullptr);
+        if (!need) continue;
+        std::vector<BYTE> detailBuf(need);
+        auto* detail = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)detailBuf.data();
+        detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+        SP_DEVINFO_DATA dev{ sizeof(dev) };
+        if (!SetupDiGetDeviceInterfaceDetailW(set, &ifd, detail, need, nullptr, &dev)) continue;
+        HANDLE h = CreateFileW(detail->DevicePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        STORAGE_DEVICE_NUMBER sdn{}; DWORD ret = 0;
+        BOOL ok = DeviceIoControl(h, IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0, &sdn, sizeof(sdn), &ret, nullptr);
+        CloseHandle(h);
+        if (!ok) continue;
+        DEVINST parent = 0;
+        if (CM_Get_Parent(&parent, dev.DevInst, 0) != CR_SUCCESS) continue;
+        for (auto& d : disks) {
+            if (d.index != (int)sdn.DeviceNumber || d.bus != "nvme") continue;
+            d.pcieCur = (int)devUlong(parent, SD_PciCurrentLinkSpeed);
+            d.pcieCurWidth = (int)devUlong(parent, SD_PciCurrentLinkWidth);
+            d.pcieMax = (int)devUlong(parent, SD_PciMaxLinkSpeed);
+            d.pcieMaxWidth = (int)devUlong(parent, SD_PciMaxLinkWidth);
+            d.rpm = 1;
+        }
+    }
+    SetupDiDestroyDeviceInfoList(set);
+}
+
 // ---------- drive letters ----------
 // Map each mounted letter to its physical disk number (volumes spanning several disks are skipped).
 static void assignLetters(std::vector<Disk>& disks) {
@@ -274,8 +359,13 @@ static void writeDisk(std::ostringstream& o, const Disk& d, const char* ind) {
       << ",\"sizeBytes\":" << d.sizeBytes;
     o << ",\"letters\":[";
     for (size_t i = 0; i < d.letters.size(); ++i) o << (i ? "," : "") << "\"" << d.letters[i] << "\"";
-    o << "]"
-      << ",\"smartOk\":" << (d.smartOk ? "true" : "false");
+    o << "]";
+    o << ",\"rpm\":" << d.rpm;
+    if (d.sataMax || d.sataCur) o << ",\"link\":{\"kind\":\"sata\",\"cur\":" << d.sataCur << ",\"max\":" << d.sataMax << "}";
+    else if (d.pcieCur || d.pcieMax)
+        o << ",\"link\":{\"kind\":\"pcie\",\"cur\":" << d.pcieCur << ",\"curWidth\":" << d.pcieCurWidth
+          << ",\"max\":" << d.pcieMax << ",\"maxWidth\":" << d.pcieMaxWidth << "}";
+    o << ",\"smartOk\":" << (d.smartOk ? "true" : "false");
     if (!d.error.empty()) o << ",\"error\":\"" << jsonEscape(d.error) << "\"";
     if (!d.attrs.empty()) {
         o << ",\"ata\":{\"attributes\":[";
@@ -325,6 +415,7 @@ int main(int argc, char** argv) {
     }
 
     assignLetters(disks);
+    assignPcieLinks(disks);
 
     std::ostringstream o;
     const char* nl = pretty ? "\n" : "";

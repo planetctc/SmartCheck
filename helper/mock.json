@@ -1,7 +1,7 @@
 {"version":1,"elevated":true,"disks":[
-{"index":0,"model":"Samsung SSD 980 PRO 1TB","serial":"S5GXNF0R000000","firmware":"5B2QGXA7","bus":"nvme","sizeBytes":1000204886016,"letters":["C:"],"smartOk":true,
+{"index":0,"model":"Samsung SSD 980 PRO 1TB","serial":"S5GXNF0R000000","firmware":"3B2QGXA7","bus":"nvme","sizeBytes":1000204886016,"letters":["C:"],"smartOk":true,"rpm":1,"link":{"kind":"pcie","cur":4,"curWidth":4,"max":4,"maxWidth":4},
  "nvme":{"criticalWarning":0,"temperatureC":41,"availableSpare":100,"spareThreshold":10,"percentageUsed":3,"dataUnitsRead":24581234,"dataUnitsWritten":19876543,"hostReads":312345678,"hostWrites":287654321,"controllerBusyMinutes":812,"powerCycles":1204,"powerOnHours":3120,"unsafeShutdowns":37,"mediaErrors":0,"errorLogEntries":12}},
-{"index":1,"model":"WDC WD20EZBX-00AYRA0","serial":"WD-WX12A3456789","firmware":"01.01A01","bus":"sata","sizeBytes":2000398934016,"letters":["D:","E:"],"smartOk":true,
+{"index":1,"model":"WDC WD20EZBX-00AYRA0","serial":"WD-WX12A3456789","firmware":"01.01A01","bus":"sata","sizeBytes":2000398934016,"letters":["D:","E:"],"smartOk":true,"rpm":7200,"link":{"kind":"sata","cur":2,"max":3},
  "ata":{"attributes":[
   {"id":1,"flags":47,"current":200,"worst":200,"threshold":51,"raw":0},
   {"id":3,"flags":39,"current":172,"worst":171,"threshold":21,"raw":4375},

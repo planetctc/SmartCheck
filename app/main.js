@@ -5,6 +5,7 @@ const os = require('os');
 const { execFile } = require('child_process');
 const { evaluate } = require('./core/health');
 const { checkUpdate } = require('./core/updater');
+const { readSystemInfo } = require('./core/sysinfo');
 
 let win = null;
 let lastScan = null;
@@ -16,7 +17,14 @@ function helperPath() {
 }
 
 // Single data entry point. The PDF report (and a future Tailscale HTTP endpoint) reuse this.
-function scanDisks() {
+async function scanDisks() {
+  const [disks, system] = await Promise.all([scanDisksOnly(), readSystemInfo({ mock: process.env.SMARTDISK_MOCK === '1' })]);
+  disks.system = system;
+  lastScan = disks;
+  return disks;
+}
+
+function scanDisksOnly() {
   return new Promise((resolve) => {
     const exe = helperPath();
     const useMock = process.env.SMARTDISK_MOCK === '1' || process.platform !== 'win32' || !fs.existsSync(exe);
