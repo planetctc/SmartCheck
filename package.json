@@ -1,0 +1,40 @@
+{
+  "name": "smartdisk",
+  "productName": "SmartDisk",
+  "version": "0.1.0",
+  "description": "店用硬盘健康检测工具",
+  "main": "app/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "start:mock": "cross-env SMARTDISK_MOCK=1 electron .",
+    "build:helper": "cmake -S helper -B helper/build -A x64 && cmake --build helper/build --config Release",
+    "dist": "npm run build:helper && electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "cross-env": "7.0.3",
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.smartdisk.app",
+    "productName": "SmartDisk",
+    "files": ["app/**/*", "package.json"],
+    "extraResources": [
+      { "from": "helper/build/Release/smartdisk-helper.exe", "to": "helper/smartdisk-helper.exe" }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SmartDisk",
+      "artifactName": "SmartDisk-Setup-${version}.exe"
+    }
+  }
+}

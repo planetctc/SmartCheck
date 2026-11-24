@@ -1,0 +1,23 @@
+{"version":1,"elevated":true,"disks":[
+{"index":0,"model":"Samsung SSD 980 PRO 1TB","serial":"S5GXNF0R000000","firmware":"5B2QGXA7","bus":"nvme","sizeBytes":1000204886016,"smartOk":true,
+ "nvme":{"criticalWarning":0,"temperatureC":41,"availableSpare":100,"spareThreshold":10,"percentageUsed":3,"dataUnitsRead":24581234,"dataUnitsWritten":19876543,"hostReads":312345678,"hostWrites":287654321,"controllerBusyMinutes":812,"powerCycles":1204,"powerOnHours":3120,"unsafeShutdowns":37,"mediaErrors":0,"errorLogEntries":12}},
+{"index":1,"model":"WDC WD20EZBX-00AYRA0","serial":"WD-WX12A3456789","firmware":"01.01A01","bus":"sata","sizeBytes":2000398934016,"smartOk":true,
+ "ata":{"attributes":[
+  {"id":1,"flags":47,"current":200,"worst":200,"threshold":51,"raw":0},
+  {"id":3,"flags":39,"current":172,"worst":171,"threshold":21,"raw":4375},
+  {"id":4,"flags":50,"current":99,"worst":99,"threshold":0,"raw":1532},
+  {"id":5,"flags":51,"current":200,"worst":200,"threshold":140,"raw":8},
+  {"id":7,"flags":46,"current":200,"worst":200,"threshold":0,"raw":0},
+  {"id":9,"flags":50,"current":88,"worst":88,"threshold":0,"raw":9021},
+  {"id":10,"flags":50,"current":100,"worst":100,"threshold":0,"raw":0},
+  {"id":12,"flags":50,"current":99,"worst":99,"threshold":0,"raw":1490},
+  {"id":192,"flags":50,"current":200,"worst":200,"threshold":0,"raw":61},
+  {"id":193,"flags":50,"current":198,"worst":198,"threshold":0,"raw":6402},
+  {"id":194,"flags":34,"current":110,"worst":98,"threshold":0,"raw":37},
+  {"id":196,"flags":50,"current":200,"worst":200,"threshold":0,"raw":8},
+  {"id":197,"flags":50,"current":200,"worst":200,"threshold":0,"raw":0},
+  {"id":198,"flags":48,"current":100,"worst":253,"threshold":0,"raw":0},
+  {"id":199,"flags":50,"current":200,"worst":200,"threshold":0,"raw":0},
+  {"id":200,"flags":8,"current":100,"worst":253,"threshold":0,"raw":0}]}},
+{"index":2,"model":"JMicron Generic","serial":"","firmware":"0508","bus":"usb","sizeBytes":500107862016,"smartOk":false,"error":"USB bridge: SMART not supported"}
+]}
