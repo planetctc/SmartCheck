@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="planet">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>smartDisk 硬盘提醒</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="alert.css">
+</head>
+<body class="alert-body">
+  <div class="alert-top">
+    <img src="img/smartDisk_icon.svg" alt="">
+    <div><h1 id="title">硬盘需要注意</h1><div class="muted small">smartDisk 硬盘监控</div></div>
+  </div>
+  <div id="list" class="alert-list"></div>
+  <p class="alert-tip">请先<b>备份重要资料</b>（照片、文件），再联系我们检查。</p>
+  <div class="alert-btns">
+    <button id="wa" class="wa">WhatsApp 联系 PLANET</button>
+    <button id="open">查看详情</button>
+    <button id="ok">知道了</button>
+  </div>
+  <div id="shop" class="muted small alert-shop"></div>
+  <script src="alert.js"></script>
+</body>
+</html>
