@@ -31,6 +31,7 @@ function parseResult(xml) {
   const t = Number((/<TestTimeSeconds>([\d.]+)<\/TestTimeSeconds>/.exec(xml) || [])[1]);
   if (!t) return null;
   const bytes = sumTag(xml, 'ReadBytes') + sumTag(xml, 'WriteBytes');
+  if (!bytes) return null;
   const ios = sumTag(xml, 'ReadCount') + sumTag(xml, 'WriteCount');
   return { mbps: Math.round(bytes / t / 1e4) / 100, iops: Math.round(ios / t) };
 }
@@ -51,12 +52,27 @@ async function prepareFile(file, onProgress, isCanceled) {
   return true;
 }
 
-function runBench({ exe, letter, onEvent, onEnd }) {
+// Short reason for a failed run, for the UI and the log.
+function failText(out) {
+  const msg = (out.stderr.match(/ERROR[^\r\n]*/) || out.stdout.match(/ERROR[^\r\n]*/) || [])[0];
+  if (msg) return msg.trim();
+  if (out.err && out.err.killed) return 'DiskSpd timed out';
+  if (out.err) return `DiskSpd exit code ${out.err.code ?? '?'}`;
+  return 'no result from DiskSpd';
+}
+
+function runBench({ exe, letter, logFile, onEvent, onEnd }) {
   const root = `${String(letter).slice(0, 1).toUpperCase()}:\\`;
   const file = path.join(root, 'smartDisk-bench.tmp');
   let child = null, canceled = false, timer = null, wake = null;
   const cleanup = () => { try { fs.unlinkSync(file); } catch {} };
   const sleep = (ms) => new Promise(r => { wake = r; timer = setTimeout(r, ms); });
+  const log = (text) => { if (logFile) try { fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${text}\n`); } catch {} };
+  const runOnce = (t) => new Promise((resolve) => {
+    const args = [...t.args, ...COMMON, file];
+    child = execFile(exe, args, { windowsHide: true, maxBuffer: 32 * 1024 * 1024, timeout: 120000 },
+      (err, stdout, stderr) => { child = null; resolve({ err, args, stdout: String(stdout || ''), stderr: String(stderr || '') }); });
+  });
 
   (async () => {
     try {
@@ -67,6 +83,7 @@ function runBench({ exe, letter, onEvent, onEnd }) {
           return onEnd('error');
         }
       } catch {}
+      if (logFile) try { fs.mkdirSync(path.dirname(logFile), { recursive: true }); fs.writeFileSync(logFile, `smartDisk benchmark log, drive ${root}\n`); } catch {}
       onEvent({ type: 'start', sizeMiB: 1024, tests: TESTS.length, engine: 'diskspd' });
       onEvent({ type: 'phase', name: 'prepare' });
       let last = 0;
@@ -79,13 +96,22 @@ function runBench({ exe, letter, onEvent, onEnd }) {
         onEvent({ type: 'phase', name: t.name });
         await sleep(REST_MS);
         if (canceled) break;
-        const xml = await new Promise((resolve) => {
-          child = execFile(exe, [...t.args, ...COMMON, file], { windowsHide: true, maxBuffer: 8 * 1024 * 1024, timeout: 120000 },
-            (err, stdout) => { child = null; resolve(err ? '' : String(stdout)); });
-        });
+        // One retry: a test can fail if something (e.g. antivirus) briefly holds the new test file.
+        let r = null, why = '';
+        for (let attempt = 1; attempt <= 2 && !r && !canceled; attempt++) {
+          if (attempt > 1) await sleep(3000);
+          if (canceled) break;
+          const out = await runOnce(t);
+          r = parseResult(out.stdout);
+          if (r) log(`${t.name}: ${r.mbps} MB/s, ${r.iops} IOPS (diskspd ${out.args.join(' ')})`);
+          else {
+            why = failText(out);
+            log(`${t.name} attempt ${attempt} failed: ${why}\n--- stdout ---\n${out.stdout.slice(0, 4000)}\n--- stderr ---\n${out.stderr.slice(0, 4000)}`);
+          }
+        }
         if (canceled) break;
-        const r = parseResult(xml);
-        onEvent({ type: 'result', test: t.name, mbps: r ? r.mbps : 0, iops: r ? r.iops : 0, ok: !!r });
+        onEvent(r ? { type: 'result', test: t.name, mbps: r.mbps, iops: r.iops, ok: true }
+          : { type: 'result', test: t.name, mbps: null, iops: null, ok: false, error: why });
       }
       cleanup();
       if (canceled) return onEnd('canceled');
@@ -101,4 +127,4 @@ function runBench({ exe, letter, onEvent, onEnd }) {
   return { cancel: () => { canceled = true; clearTimeout(timer); if (wake) wake(); if (child) child.kill(); } };
 }
 
-module.exports = { runBench, parseResult };
+module.exports = { runBench, parseResult, failText };

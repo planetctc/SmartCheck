@@ -74,7 +74,7 @@ function startTask(kind, diskIndex, letter) {
 
   const onEvent = (ev) => {
     if (kind === 'bench') {
-      if (ev.type === 'result') acc.results[ev.test] = { mbps: ev.mbps, iops: ev.iops, ok: ev.ok };
+      if (ev.type === 'result') acc.results[ev.test] = { mbps: ev.mbps, iops: ev.iops, ok: ev.ok, error: ev.error };
     } else {
       if (ev.type === 'start') { acc.size = ev.size; acc.cells = new Array(ev.cells).fill(-1); }
       if (ev.type === 'progress') {
@@ -106,7 +106,7 @@ function startTask(kind, diskIndex, letter) {
   // Benchmark: DiskSpd (same engine as CrystalDiskMark) when it is bundled, else the helper's own benchmark.
   const dspd = diskspdPath();
   if (kind === 'bench' && fs.existsSync(dspd)) {
-    const run = diskspd.runBench({ exe: dspd, letter, onEvent, onEnd: (st) => finish(st) });
+    const run = diskspd.runBench({ exe: dspd, letter, logFile: path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'bench-log.txt'), onEvent, onEnd: (st) => finish(st) });
     task = { cancel: () => run.cancel() };
     return { ok: true, key };
   }

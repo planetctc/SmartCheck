@@ -122,13 +122,14 @@ function dur(sec) {
   const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
   return h ? L(`${h} 小时 ${m} 分`, `${h} h ${m} min`) : m ? L(`${m} 分 ${sec % 60} 秒`, `${m} min ${sec % 60} s`) : L(`${sec} 秒`, `${sec} s`);
 }
+function cell(res) { return res && res.ok === false ? `<span class="st-bad" title="${esc(res.error || '')}">${L('失败', 'Failed')}</span>` : mbps(res?.mbps); }
 function mbps(v) { return v == null ? '-' : v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(v >= 10 ? 1 : 2); }
 
 function benchCard(d, t) {
   const b = t.bench;
   const busy = running && running.kind === 'bench' && running.key === diskKey(d);
   const letter = d.letters?.[0];
-  const rows = BENCH_ROWS().map(([label, r, w]) => `<tr><td>${label}</td><td class="r">${mbps(b?.results?.[r]?.mbps)}</td><td class="r">${mbps(b?.results?.[w]?.mbps)}</td></tr>`).join('');
+  const rows = BENCH_ROWS().map(([label, r, w]) => `<tr><td>${label}</td><td class="r">${cell(b?.results?.[r])}</td><td class="r">${cell(b?.results?.[w])}</td></tr>`).join('');
   let foot;
   if (busy) foot = `<div class="tool-status"><span class="spin"></span>${esc(PHASE_TEXT()[b?.phase] || L('准备中', 'Starting'))}…</div><button class="cancel">${L('停止', 'Stop')}</button>`;
   else if (!letter) foot = `<div class="muted small">${L('这块硬盘没有分区（盘符），无法测速。', 'This drive has no partition (drive letter), so it cannot be benchmarked.')}</div>`;
@@ -196,7 +197,7 @@ window.smartdisk.onTask?.((ev) => {
   const t = (tests[ev.key] ||= {});
   const cur = t[ev.kind] ||= { results: {} };
   if (ev.type === 'phase') cur.phase = ev.name;
-  if (ev.type === 'result') cur.results = { ...cur.results, [ev.test]: { mbps: ev.mbps, iops: ev.iops } };
+  if (ev.type === 'result') cur.results = { ...cur.results, [ev.test]: { mbps: ev.mbps, iops: ev.iops, ok: ev.ok !== false, error: ev.error } };
   if (ev.type === 'start' && ev.kind === 'scan') cur.cells = new Array(ev.cells).fill(-1);
   if (ev.type === 'progress' && ev.kind === 'scan') {
     Object.assign(cur, { pct: ev.pct, bad: ev.bad, slow: ev.slow, verySlow: ev.verySlow, mbps: ev.mbps, elapsed: ev.elapsed });
