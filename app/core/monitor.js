@@ -2,6 +2,8 @@
 // disk was seen (normally when the shop installed smartDisk) and returns alerts for the customer.
 // Pure logic, no Electron: main.js stores the state in %ProgramData%\smartDisk\monitor.json.
 
+const { L } = require('../renderer/i18n');
+
 const HEALTH_DROP = 2;          // alert when health falls this many points (e.g. 100 -> 98)
 const HOT_REPEAT_MS = 24 * 3600 * 1000;
 const RANK = { good: 0, unknown: 0, warn: 1, bad: 2 };
@@ -23,10 +25,12 @@ function snapshot(d) {
   return { health: s.health, status: s.status, damage: damage(d), at: new Date().toISOString() };
 }
 
-const DAMAGE_TEXT = {
-  realloc: '重映射扇区（坏道已被替换）', pending: '待映射扇区（读不稳的扇区）', uncorrectable: '无法修正的扇区',
-  media: '介质错误', critical: 'NVMe 严重警告',
-};
+const DAMAGE_TEXT = () => ({
+  realloc: L('重映射扇区（坏道已被替换）', 'Reallocated sectors (bad sectors replaced)'),
+  pending: L('待映射扇区（读不稳的扇区）', 'Pending sectors (unstable sectors)'),
+  uncorrectable: L('无法修正的扇区', 'Uncorrectable sectors'),
+  media: L('介质错误', 'Media errors'), critical: L('NVMe 严重警告', 'NVMe critical warning'),
+});
 
 // state: { disks: { [key]: { model, baseline, ack, hotCount, lastHotAlert } } }
 // Returns { state, alerts: [{ key, model, letters, kind, text }] }.
@@ -48,15 +52,15 @@ function check(state, scan, now = Date.now()) {
 
     // New bad sectors / media errors.
     const grew = Object.keys(cur.damage).filter(k => (cur.damage[k] || 0) > (ack.damage?.[k] || 0));
-    for (const k of grew) msgs.push(`${DAMAGE_TEXT[k] || k}：${ack.damage?.[k] || 0} → ${cur.damage[k]}`);
+    for (const k of grew) msgs.push(`${DAMAGE_TEXT()[k] || k}${L('：', ': ')}${ack.damage?.[k] || 0} → ${cur.damage[k]}`);
 
     // Health drop.
     const drop = (ack.health ?? cur.health) - cur.health;
     const worse = RANK[cur.status] > RANK[ack.status || 'good'];
     if (drop >= HEALTH_DROP) {   // every 2 points, SSD wear included (nick: 每两趴)
-      msgs.unshift(`健康度从 ${ack.health}% 降到 ${cur.health}%（安装时 ${e.baseline.health}%）`);
+      msgs.unshift(L(`健康度从 ${ack.health}% 降到 ${cur.health}%（安装时 ${e.baseline.health}%）`, `Health dropped from ${ack.health}% to ${cur.health}% (${e.baseline.health}% when installed)`));
     } else if (worse) {
-      msgs.unshift(`硬盘状态变差：${cur.status === 'bad' ? '危险' : '需要注意'}（健康度 ${cur.health}%）`);
+      msgs.unshift(L(`硬盘状态变差：${cur.status === 'bad' ? '危险' : '需要注意'}（健康度 ${cur.health}%）`, `Drive condition got worse: ${cur.status === 'bad' ? 'bad' : 'caution'} (health ${cur.health}%)`));
     }
     if (msgs.length) {
       alerts.push({ ...who, kind: 'health', severity: cur.status === 'bad' || grew.length ? 'bad' : 'warn', text: msgs });
@@ -71,7 +75,7 @@ function check(state, scan, now = Date.now()) {
       e.hotCount = (e.hotCount || 0) + 1;
       if (e.hotCount >= 2 && now - (e.lastHotAlert || 0) > HOT_REPEAT_MS) {
         e.lastHotAlert = now;
-        alerts.push({ ...who, kind: 'hot', severity: 'warn', text: [`温度 ${t} °C，超过 ${hotLimit(d)} °C。请检查风扇和通风，避免长时间高温。`] });
+        alerts.push({ ...who, kind: 'hot', severity: 'warn', text: [L(`温度 ${t} °C，超过 ${hotLimit(d)} °C。请检查风扇和通风，避免长时间高温。`, `Temperature ${t} °C, above ${hotLimit(d)} °C. Check the fans and airflow; avoid running this hot for long.`)] });
       }
     } else e.hotCount = 0;
     e.model = d.model;

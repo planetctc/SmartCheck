@@ -1,6 +1,7 @@
 // Online update, same approach as smartAcc: new versions are published as GitHub releases
 // on planetctc/smartdisk-releases (see "publish" in package.json). Installed version only.
 const { app, dialog } = require('electron');
+const { L } = require('../renderer/i18n');
 
 let updater = null;
 let busy = false;
@@ -23,9 +24,9 @@ function getUpdater(win) {
       if (silent) return;
       try { if (win && !win.isDestroyed()) win.setProgressBar(-1); } catch {}
       const r = await dialog.showMessageBox(win, {
-        type: 'info', buttons: ['现在重启', '稍后'], defaultId: 0, cancelId: 1, title: 'smartDisk',
-        message: `smartDisk ${info.version} 已下载好`,
-        detail: '重启 smartDisk 就完成更新。\n选「稍后」的话，下次关闭 smartDisk 时会自动更新。',
+        type: 'info', buttons: [L('现在重启', 'Restart now'), L('稍后', 'Later')], defaultId: 0, cancelId: 1, title: 'smartDisk',
+        message: L(`smartDisk ${info.version} 已下载好`, `smartDisk ${info.version} is downloaded`),
+        detail: L('重启 smartDisk 就完成更新。\n选「稍后」的话，下次关闭 smartDisk 时会自动更新。', 'Restart smartDisk to finish the update.\nIf you choose Later, it updates the next time smartDisk closes.'),
       });
       if (r.response === 0) setImmediate(() => autoUpdater.quitAndInstall(false, true));
     });
@@ -38,18 +39,18 @@ function getUpdater(win) {
 async function checkUpdate(win, manual) {
   const u = getUpdater(win);
   const say = (type, message, detail) => dialog.showMessageBox(win, { type, title: 'smartDisk', message, detail });
-  if (!u) { if (manual) say('info', '网上更新只适用于安装版。'); return { ok: false }; }
-  if (busy) { if (manual) say('info', '正在下载更新。'); return { ok: true }; }
+  if (!u) { if (manual) say('info', L('网上更新只适用于安装版。', 'Online updates only work in the installed version.')); return { ok: false }; }
+  if (busy) { if (manual) say('info', L('正在下载更新。', 'An update is downloading.')); return { ok: true }; }
   try {
     const r = await u.checkForUpdates();
     const info = r && r.updateInfo;
     const newer = info && info.version && info.version !== app.getVersion() && r.isUpdateAvailable !== false;
-    if (!newer) { if (manual) say('info', `已经是最新版本（${app.getVersion()}）。`); return { ok: true, latest: true }; }
+    if (!newer) { if (manual) say('info', L(`已经是最新版本（${app.getVersion()}）。`, `You have the latest version (${app.getVersion()}).`)); return { ok: true, latest: true }; }
     if (!manual && info.version === laterVer) return { ok: true };
     const notes = String(info.releaseNotes || '').replace(/<[^>]+>/g, '').trim().slice(0, 800);
     const a = await dialog.showMessageBox(win, {
-      type: 'info', buttons: ['下载并安装', '以后再说'], defaultId: 0, cancelId: 1, title: 'smartDisk',
-      message: `有新版本 smartDisk ${info.version}（目前是 ${app.getVersion()}）`, detail: notes,
+      type: 'info', buttons: [L('下载并安装', 'Download and install'), L('以后再说', 'Not now')], defaultId: 0, cancelId: 1, title: 'smartDisk',
+      message: L(`有新版本 smartDisk ${info.version}（目前是 ${app.getVersion()}）`, `smartDisk ${info.version} is available (you have ${app.getVersion()})`), detail: notes,
     });
     if (a.response !== 0) { laterVer = info.version; return { ok: true }; }
     busy = true;
@@ -57,7 +58,7 @@ async function checkUpdate(win, manual) {
     return { ok: true };
   } catch (e) {
     busy = false;
-    if (manual) say('warning', '无法检查更新，请检查网络。', String(e && e.message || e).slice(0, 300));
+    if (manual) say('warning', L('无法检查更新，请检查网络。', 'Could not check for updates. Check the internet connection.'), String(e && e.message || e).slice(0, 300));
     return { ok: false };
   }
 }

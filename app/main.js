@@ -7,6 +7,8 @@ const { mockTask } = require('./core/mocktask');
 const { evaluate } = require('./core/health');
 const { checkUpdate, checkUpdateSilent } = require('./core/updater');
 const monitor = require('./core/monitor');
+const I18N = require('./renderer/i18n');
+const { L } = I18N;
 const { readSystemInfo } = require('./core/sysinfo');
 
 let win = null;
@@ -122,6 +124,7 @@ const DEFAULT_SETTINGS = {
   technician: '',
   whatsapp: '+60 12-510 5542',
   whatsappOn: '1',
+  lang: 'zh',
 };
 const settingsFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'settings.json');
 const oldSettingsFile = () => path.join(app.getPath('userData'), 'settings.json');   // before 0.6.1
@@ -132,15 +135,17 @@ function loadSettings() {
     try { text = fs.readFileSync(settingsFile(), 'utf8'); } catch { text = fs.readFileSync(oldSettingsFile(), 'utf8'); }
     const s = { ...DEFAULT_SETTINGS, ...JSON.parse(text) };
     // Saved by 0.3.0 with the old shop email: switch to the new one.
+    I18N.setLang(s.lang);
     if (s.shopContact.includes(OLD_EMAIL)) s.shopContact = s.shopContact.replace(OLD_EMAIL, 'planet@planetctc.com.my');
     return s;
-  } catch { return { ...DEFAULT_SETTINGS }; }
+  } catch { I18N.setLang(DEFAULT_SETTINGS.lang); return { ...DEFAULT_SETTINGS }; }
 }
 function saveSettings(s) {
   const clean = {};
   for (const k of Object.keys(DEFAULT_SETTINGS)) clean[k] = String(s[k] ?? '').slice(0, 200);
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
   fs.writeFileSync(settingsFile(), JSON.stringify(clean, null, 2));
+  I18N.setLang(clean.lang);
   return clean;
 }
 
@@ -149,7 +154,7 @@ async function makeReport(form) {
   const scan = lastScan || await scanDisks();
   const settings = saveSettings({ ...loadSettings(), technician: form.technician });
   const payload = {
-    scan, settings, tests: testResults, version: app.getVersion(),
+    scan, settings, tests: testResults, version: app.getVersion(), lang: settings.lang,
     customer: String(form.customer || '').slice(0, 120),
     orderNo: String(form.orderNo || '').slice(0, 60),
     technician: settings.technician,
@@ -160,8 +165,8 @@ async function makeReport(form) {
   const stamp = new Date().toISOString().slice(0, 10);
   const safe = (payload.orderNo || stamp).replace(/[\\/:*?"<>|]/g, '_');
   const { canceled, filePath } = await dialog.showSaveDialog(win, {
-    title: '保存检测报告',
-    defaultPath: path.join(app.getPath('documents'), `smartDisk-检测报告-${safe}.pdf`),
+    title: L('保存检测报告', 'Save inspection report'),
+    defaultPath: path.join(app.getPath('documents'), `smartDisk-${L('检测报告', 'Report')}-${safe}.pdf`),
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (canceled || !filePath) return { ok: false, canceled: true };
@@ -261,8 +266,8 @@ function showAlerts(alerts, scan) {
   const first = pendingAlerts[0];
   if (Notification.isSupported()) {
     const n = new Notification({
-      title: 'smartDisk 硬盘提醒',
-      body: `${first.model}${first.letters.length ? '（' + first.letters.join(' ') + '）' : ''}：${first.text[0]}`,
+      title: L('smartDisk 硬盘提醒', 'smartDisk drive alert'),
+      body: `${first.model}${first.letters.length ? ' (' + first.letters.join(' ') + ')' : ''}: ${first.text[0]}`,
       icon: path.join(__dirname, 'icon.png'),
     });
     n.on('click', openAlertWindow);
@@ -276,7 +281,7 @@ function openAlertWindow() {
   if (alertWin && !alertWin.isDestroyed()) { alertWin.webContents.send('alert:data', alertPayload()); alertWin.show(); alertWin.focus(); return; }
   alertWin = new BrowserWindow({
     width: 480, height: 440, resizable: false, minimizable: false, maximizable: false, alwaysOnTop: true,
-    title: 'smartDisk 硬盘提醒', icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
+    title: L('smartDisk 硬盘提醒', 'smartDisk drive alert'), icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   alertWin.loadFile(path.join(__dirname, 'renderer', 'alert.html'));
@@ -285,14 +290,16 @@ function openAlertWindow() {
 
 function alertPayload() {
   const st = loadSettings();
-  return { alerts: pendingAlerts, shopName: st.shopName, shopContact: st.shopContact, whatsapp: !!whatsappNumber() };
+  return { alerts: pendingAlerts, shopName: st.shopName, shopContact: st.shopContact, whatsapp: !!whatsappNumber(), lang: st.lang };
 }
 
 function alertAction(action) {
   if (action === 'whatsapp' && whatsappNumber()) {
     const a = pendingAlerts;
-    const lines = [`你好 ${loadSettings().shopName || ''}，smartDisk 提醒我的硬盘有问题：`.replace('你好 ，', '你好，'), ...a.map(x => `- ${x.model}${x.letters.length ? ' (' + x.letters.join(' ') + ')' : ''}：${x.text.join('；')}`),
-      `电脑：${a[0]?.pc || os.hostname()}`];
+    const shop = loadSettings().shopName || '';
+    const lines = [L(`你好${shop ? ' ' + shop : ''}，smartDisk 提醒我的硬盘有问题：`, `Hi${shop ? ' ' + shop : ''}, smartDisk warned me about a problem with my drive:`),
+      ...a.map(x => `- ${x.model}${x.letters.length ? ' (' + x.letters.join(' ') + ')' : ''}: ${x.text.join(L('；', '; '))}`),
+      `${L('电脑', 'PC')}: ${a[0]?.pc || os.hostname()}`];
     shell.openExternal(`https://wa.me/${whatsappNumber()}?text=${encodeURIComponent(lines.join('\n'))}`);
   } else if (action === 'open') {
     createWindow();
@@ -309,7 +316,7 @@ async function monitorCheck(manual) {
   if (alerts.length) showAlerts(alerts, scan);
   else if (manual) {
     const worst = scan.disks.filter(d => d.summary?.health != null).map(d => `${d.model}：${d.summary.health}%`).join('\n');
-    dialog.showMessageBox({ type: 'info', title: 'smartDisk', message: '硬盘状况和安装时一样，没有新问题。', detail: worst });
+    dialog.showMessageBox({ type: 'info', title: 'smartDisk', message: L('硬盘状况和安装时一样，没有新问题。', 'No new problems since the drives were first checked.'), detail: worst });
   }
   updateTrayTip(scan);
 }
@@ -317,27 +324,28 @@ async function monitorCheck(manual) {
 function updateTrayTip(scan) {
   if (!tray) return;
   const parts = (scan?.disks || []).filter(d => d.summary?.health != null).map(d => `${(d.letters || []).join(' ') || d.model.slice(0, 16)} ${d.summary.health}%`);
-  tray.setToolTip(`smartDisk 硬盘监控\n${parts.join('\n')}`.slice(0, 127));
+  tray.setToolTip(`${L('smartDisk 硬盘监控', 'smartDisk drive monitor')}\n${parts.join('\n')}`.slice(0, 127));
 }
 
 function refreshTrayMenu() {
   if (!tray) return;
   const menu = Menu.buildFromTemplate([
-    { label: '打开 smartDisk', click: () => createWindow() },
-    { label: '立即检查', click: () => monitorCheck(true) },
-    ...(whatsappNumber() ? [{ label: 'WhatsApp 联系我们', click: () => shell.openExternal(`https://wa.me/${whatsappNumber()}`) }] : []),
+    { label: L('打开 smartDisk', 'Open smartDisk'), click: () => createWindow() },
+    { label: L('立即检查', 'Check now'), click: () => monitorCheck(true) },
+    ...(whatsappNumber() ? [{ label: L('WhatsApp 联系我们', 'Contact us on WhatsApp'), click: () => shell.openExternal(`https://wa.me/${whatsappNumber()}`) }] : []),
     { type: 'separator' },
-    { label: '以目前状态为基准', click: async () => {
-      const r = await dialog.showMessageBox({ type: 'question', buttons: ['确定', '取消'], cancelId: 1, title: 'smartDisk',
-        message: '把目前的硬盘状态设为新的基准？', detail: '之后只会在比目前更差时才提醒。一般只在换硬盘或维修后使用。' });
+    { label: L('以目前状态为基准', 'Use current state as baseline'), click: async () => {
+      const r = await dialog.showMessageBox({ type: 'question', buttons: [L('确定', 'OK'), L('取消', 'Cancel')], cancelId: 1, title: 'smartDisk',
+        message: L('把目前的硬盘状态设为新的基准？', 'Make the current drive state the new baseline?'),
+        detail: L('之后只会在比目前更差时才提醒。一般只在换硬盘或维修后使用。', 'Alerts will only come when things get worse than now. Use this after replacing or repairing a drive.') });
       if (r.response !== 0) return;
       const scan = await scanDisksOnly();
       const m = loadMonitor();
       saveMonitor({ ...m, disks: monitor.rebase(null, scan).disks });
     } },
-    { label: '退出监控', click: async () => {
-      const r = await dialog.showMessageBox({ type: 'question', buttons: ['只是这次', '以后都不要监控', '取消'], cancelId: 2, title: 'smartDisk',
-        message: '退出硬盘监控？', detail: '选「只是这次」，下次开机还会自动监控。' });
+    { label: L('退出监控', 'Quit monitor'), click: async () => {
+      const r = await dialog.showMessageBox({ type: 'question', buttons: [L('只是这次', 'Just this time'), L('以后都不要监控', 'Turn monitoring off'), L('取消', 'Cancel')], cancelId: 2, title: 'smartDisk',
+        message: L('退出硬盘监控？', 'Quit the drive monitor?'), detail: L('选「只是这次」，下次开机还会自动监控。', 'With "Just this time", monitoring starts again at the next sign-in.') });
       if (r.response === 2) return;
       if (r.response === 1) { saveMonitor({ ...loadMonitor(), enabled: false }); await setMonitorTask(false); }
       app.quit();
@@ -349,7 +357,7 @@ function refreshTrayMenu() {
 function startMonitor() {
   const img = nativeImage.createFromPath(path.join(__dirname, 'icon.png')).resize({ width: 16, height: 16 });
   tray = new Tray(img);
-  tray.setToolTip('smartDisk 硬盘监控');
+  tray.setToolTip(L('smartDisk 硬盘监控', 'smartDisk drive monitor'));
   refreshTrayMenu();
   tray.on('double-click', () => createWindow());
   setTimeout(() => monitorCheck(false), 2 * 60 * 1000);
