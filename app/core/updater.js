@@ -5,6 +5,7 @@ const { app, dialog } = require('electron');
 let updater = null;
 let busy = false;
 let laterVer = '';
+let silent = false;   // tray monitor: download quietly, install when the app quits (e.g. Windows shutdown)
 
 function getUpdater(win) {
   if (updater !== null) return updater;
@@ -19,6 +20,7 @@ function getUpdater(win) {
     });
     autoUpdater.on('update-downloaded', async info => {
       busy = false;
+      if (silent) return;
       try { if (win && !win.isDestroyed()) win.setProgressBar(-1); } catch {}
       const r = await dialog.showMessageBox(win, {
         type: 'info', buttons: ['现在重启', '稍后'], defaultId: 0, cancelId: 1, title: 'smartDisk',
@@ -60,4 +62,16 @@ async function checkUpdate(win, manual) {
   }
 }
 
-module.exports = { checkUpdate };
+async function checkUpdateSilent() {
+  const u = getUpdater(null);
+  if (!u || busy) return;
+  try {
+    const r = await u.checkForUpdates();
+    const info = r && r.updateInfo;
+    if (!info || !info.version || info.version === app.getVersion() || r.isUpdateAvailable === false) return;
+    silent = true; busy = true;
+    await u.downloadUpdate();
+  } catch { busy = false; }
+}
+
+module.exports = { checkUpdate, checkUpdateSilent };

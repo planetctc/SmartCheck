@@ -9,5 +9,9 @@ contextBridge.exposeInMainWorld('smartdisk', {
   startTask: (kind, disk, letter) => ipcRenderer.invoke('task:start', { kind, disk, letter }),
   cancelTask: () => ipcRenderer.invoke('task:cancel'),
   taskResults: () => ipcRenderer.invoke('task:results'),
+  monitorState: () => ipcRenderer.invoke('monitor:get'),
+  alertData: () => ipcRenderer.invoke('alert:get'),
+  alertAction: (a) => ipcRenderer.invoke('alert:action', a),
+  onAlert: (fn) => ipcRenderer.on('alert:data', (_e, d) => fn(d)),
   onTask: (fn) => ipcRenderer.on('task:event', (_e, ev) => fn(ev)),
 });

@@ -96,6 +96,7 @@ const BENCH_ROWS = [['顺序 1M Q8', 'seqRead', 'seqWrite'], ['随机 4K Q32', '
 const PHASE_TEXT = { prepare: '准备测试文件', seqRead: '顺序读取', seqWrite: '顺序写入', rnd4kQ32Read: '4K 随机读取 (Q32)', rnd4kQ32Write: '4K 随机写入 (Q32)', rnd4kQ1Read: '4K 随机读取 (Q1)', rnd4kQ1Write: '4K 随机写入 (Q1)' };
 const tests = {};   // disk key -> { bench, scan }, mirrors main's results plus live progress
 let running = null; // { kind, key }
+let monitorState = null;  // baseline per disk from the background monitor
 
 function diskKey(d) { return d.serial || `${d.model}#${d.index}`; }
 function isSsd(d) { return d.bus === 'nvme' || d.rpm === 1; }
@@ -239,9 +240,11 @@ function renderDetail() {
   if (current === -1) return renderSystem();
   const d = data.disks[current];
   const s = d.summary;
+  const base = monitorState?.disks?.[diskKey(d)]?.baseline;
+  const baseText = base && base.health != null ? ` · 监控基准 ${base.health}%（${String(base.at).slice(0, 10)}）` : '';
   const head = `<div class="head"><h1>${esc(d.model) || '未知型号'}</h1>
     <div class="meta"><span class="chip" style="color:${color(s.status)}">${STATUS_TEXT[s.status]}</span>
-    ${esc(BUS_TEXT[d.bus] || d.bus)} · ${size(d.sizeBytes)} · 序列号 ${esc(d.serial) || '-'} · 固件 ${esc(d.firmware) || '-'} · 磁盘 ${d.index}${letters(d) ? ' · 盘符 ' + esc(letters(d)) : ''}</div></div>`;
+    ${esc(BUS_TEXT[d.bus] || d.bus)} · ${size(d.sizeBytes)} · 序列号 ${esc(d.serial) || '-'} · 固件 ${esc(d.firmware) || '-'} · 磁盘 ${d.index}${letters(d) ? ' · 盘符 ' + esc(letters(d)) : ''}${esc(baseText)}</div></div>`;
 
   if (!d.smartOk) {
     $('#detail').innerHTML = head + `<div class="hero"><div class="gauge-card">${gauge(null, 'unknown')}<div class="verdict">${STATUS_TEXT.unknown}</div></div>
@@ -280,7 +283,7 @@ function render() {
 
 async function scan() {
   $('#refresh').disabled = true;
-  try { data = await window.smartdisk.scan(); if (current >= data.disks.length || (current === -1 && !data.system)) current = 0; render(); }
+  try { data = await window.smartdisk.scan(); try { monitorState = await window.smartdisk.monitorState?.(); } catch {} if (current >= data.disks.length || (current === -1 && !data.system)) current = 0; render(); }
   finally { $('#refresh').disabled = false; }
 }
 $('#refresh').addEventListener('click', scan);
