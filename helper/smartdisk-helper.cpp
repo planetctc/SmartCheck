@@ -56,6 +56,7 @@ struct NvmeHealth {
 struct Disk {
     int index = 0;
     std::string model, serial, firmware, bus;   // bus: "sata" | "nvme" | "usb" | "other"
+    std::vector<std::string> letters;           // drive letters on this disk, e.g. "C:"
     uint64_t sizeBytes = 0;
     bool smartOk = false;
     std::string error;
@@ -164,6 +165,34 @@ static bool readSata(HANDLE h, Disk& d) {
     return d.smartOk;
 }
 
+// ---------- NVMe Identify Controller (real serial / model / firmware) ----------
+// StorageDeviceProperty often returns the EUI-64/NGUID instead of the serial number for NVMe drives.
+static std::string fixedStr(const BYTE* p, size_t n) { return trim(std::string((const char*)p, n)); }
+
+static void readNvmeIdentify(HANDLE h, Disk& d) {
+    const DWORD idSize = 4096;
+    const DWORD bufLen = FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters) + sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA) + idSize;
+    std::vector<BYTE> buf(bufLen);
+    auto* q = (STORAGE_PROPERTY_QUERY*)buf.data();
+    auto* p = (STORAGE_PROTOCOL_SPECIFIC_DATA*)q->AdditionalParameters;
+    q->PropertyId = StorageAdapterProtocolSpecificProperty;
+    q->QueryType = PropertyStandardQuery;
+    p->ProtocolType = ProtocolTypeNvme;
+    p->DataType = NVMeDataTypeIdentify;
+    p->ProtocolDataRequestValue = NVME_IDENTIFY_CNS_CONTROLLER;
+    p->ProtocolDataRequestSubValue = 0;
+    p->ProtocolDataOffset = sizeof(STORAGE_PROTOCOL_SPECIFIC_DATA);
+    p->ProtocolDataLength = idSize;
+    DWORD ret = 0;
+    if (!DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, buf.data(), bufLen, buf.data(), bufLen, &ret, nullptr)) return;
+    auto* desc = (STORAGE_PROTOCOL_DATA_DESCRIPTOR*)buf.data();
+    const BYTE* id = (const BYTE*)&desc->ProtocolSpecificData + desc->ProtocolSpecificData.ProtocolDataOffset;
+    std::string sn = fixedStr(id + 4, 20), mn = fixedStr(id + 24, 40), fr = fixedStr(id + 64, 8);
+    if (!sn.empty()) d.serial = sn;
+    if (!mn.empty()) d.model = mn;
+    if (!fr.empty()) d.firmware = fr;
+}
+
 // ---------- NVMe health log (page 0x02) ----------
 static uint64_t le64(const BYTE* p) { uint64_t v = 0; for (int i = 7; i >= 0; --i) v = (v << 8) | p[i]; return v; }
 
@@ -214,6 +243,27 @@ static bool readNvme(HANDLE h, Disk& d) {
     return true;
 }
 
+// ---------- drive letters ----------
+// Map each mounted letter to its physical disk number (volumes spanning several disks are skipped).
+static void assignLetters(std::vector<Disk>& disks) {
+    DWORD mask = GetLogicalDrives();
+    for (int i = 0; i < 26; ++i) {
+        if (!(mask & (1u << i))) continue;
+        wchar_t root[] = { wchar_t(L'A' + i), L':', L'\\', 0 };
+        UINT type = GetDriveTypeW(root);
+        if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE) continue;
+        wchar_t vol[] = { L'\\', L'\\', L'.', L'\\', wchar_t(L'A' + i), L':', 0 };
+        HANDLE h = CreateFileW(vol, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (h == INVALID_HANDLE_VALUE) continue;
+        STORAGE_DEVICE_NUMBER sdn{}; DWORD ret = 0;
+        if (DeviceIoControl(h, IOCTL_STORAGE_GET_DEVICE_NUMBER, nullptr, 0, &sdn, sizeof(sdn), &ret, nullptr)) {
+            for (auto& d : disks)
+                if (d.index == (int)sdn.DeviceNumber) d.letters.push_back(std::string(1, char('A' + i)) + ":");
+        }
+        CloseHandle(h);
+    }
+}
+
 // ---------- output ----------
 static void writeDisk(std::ostringstream& o, const Disk& d, const char* ind) {
     o << ind << "{\"index\":" << d.index
@@ -221,7 +271,10 @@ static void writeDisk(std::ostringstream& o, const Disk& d, const char* ind) {
       << ",\"serial\":\"" << jsonEscape(d.serial) << "\""
       << ",\"firmware\":\"" << jsonEscape(d.firmware) << "\""
       << ",\"bus\":\"" << d.bus << "\""
-      << ",\"sizeBytes\":" << d.sizeBytes
+      << ",\"sizeBytes\":" << d.sizeBytes;
+    o << ",\"letters\":[";
+    for (size_t i = 0; i < d.letters.size(); ++i) o << (i ? "," : "") << "\"" << d.letters[i] << "\"";
+    o << "]"
       << ",\"smartOk\":" << (d.smartOk ? "true" : "false");
     if (!d.error.empty()) o << ",\"error\":\"" << jsonEscape(d.error) << "\"";
     if (!d.attrs.empty()) {
@@ -264,12 +317,14 @@ int main(int argc, char** argv) {
         STORAGE_BUS_TYPE bus;
         queryDescriptor(h, d, bus);
         querySize(h, d);
-        if (d.bus == "nvme") readNvme(h, d);
+        if (d.bus == "nvme") { readNvmeIdentify(h, d); readNvme(h, d); }
         else if (d.bus == "usb") { if (!readSata(h, d)) d.error = "USB bridge: SMART not supported"; }
         else readSata(h, d);
         CloseHandle(h);
         disks.push_back(d);
     }
+
+    assignLetters(disks);
 
     std::ostringstream o;
     const char* nl = pretty ? "\n" : "";
