@@ -45,3 +45,6 @@ table.sys .sub { display: block; color: #5d7196; font-size: 10px; }
 table.sys b.ok { color: #17a368; } table.sys b.bad { color: #d63a40; }
 .disk .kv span span { margin: 0; }
 .disk .why.bad { color: #d63a40; }
+.disk .test { margin-top: 4px; padding: 4px 8px; background: #f2f7fc; border-radius: 6px; }
+.disk .test > span { color: #5d7196; margin-right: 8px; }
+.disk .test b.ok { color: #17a368; } .disk .test b.warn { color: #b06d00; } .disk .test b.bad { color: #d63a40; }
