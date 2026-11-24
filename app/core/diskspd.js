@@ -1,6 +1,6 @@
 // Benchmark with Microsoft DiskSpd (MIT, built from source in CI), the same engine CrystalDiskMark uses,
 // with CrystalDiskMark-style settings: 1 GiB test file of random data, 5 s per test, 5 s rest between tests,
-// write-through + no OS cache (-Sh). Emits the same events as `smartdisk-helper bench`.
+// write-through + no OS cache (-Sh), each test run 3 times keeping the best. Emits the same events as `smartdisk-helper bench`.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -19,6 +19,7 @@ const TESTS = [
 ];
 const COMMON = ['-d5', '-W0', '-Sh', '-Z64M', '-Rxml'];
 const REST_MS = 5000;
+const RUNS = 3;
 
 function sumTag(xml, tag) {
   let total = 0;
@@ -93,25 +94,32 @@ function runBench({ exe, letter, logFile, onEvent, onEnd }) {
       if (!ok || canceled) { cleanup(); return onEnd('canceled'); }
 
       for (const t of TESTS) {
-        onEvent({ type: 'phase', name: t.name });
-        await sleep(REST_MS);
-        if (canceled) break;
-        // One retry: a test can fail if something (e.g. antivirus) briefly holds the new test file.
-        let r = null, why = '';
-        for (let attempt = 1; attempt <= 2 && !r && !canceled; attempt++) {
-          if (attempt > 1) await sleep(3000);
+        // Like CrystalDiskMark: run each test RUNS times and keep the best result.
+        let best = null, why = '';
+        for (let run = 1; run <= RUNS && !canceled; run++) {
+          onEvent({ type: 'phase', name: t.name, run, runs: RUNS });
+          await sleep(REST_MS);
           if (canceled) break;
-          const out = await runOnce(t);
-          r = parseResult(out.stdout);
-          if (r) log(`${t.name}: ${r.mbps} MB/s, ${r.iops} IOPS (diskspd ${out.args.join(' ')})`);
-          else {
-            why = failText(out);
-            log(`${t.name} attempt ${attempt} failed: ${why}\n--- stdout ---\n${out.stdout.slice(0, 4000)}\n--- stderr ---\n${out.stderr.slice(0, 4000)}`);
+          // One retry: a test can fail if something (e.g. antivirus) briefly holds the test file.
+          let r = null;
+          for (let attempt = 1; attempt <= 2 && !r && !canceled; attempt++) {
+            if (attempt > 1) await sleep(3000);
+            if (canceled) break;
+            const out = await runOnce(t);
+            r = parseResult(out.stdout);
+            if (r) log(`${t.name} run ${run}: ${r.mbps} MB/s, ${r.iops} IOPS (diskspd ${out.args.join(' ')})`);
+            else {
+              why = failText(out);
+              log(`${t.name} run ${run} attempt ${attempt} failed: ${why}\n--- stdout ---\n${out.stdout.slice(0, 4000)}\n--- stderr ---\n${out.stderr.slice(0, 4000)}`);
+            }
+          }
+          if (r && (!best || r.mbps > best.mbps)) {
+            best = r;
+            onEvent({ type: 'result', test: t.name, mbps: r.mbps, iops: r.iops, ok: true });
           }
         }
         if (canceled) break;
-        onEvent(r ? { type: 'result', test: t.name, mbps: r.mbps, iops: r.iops, ok: true }
-          : { type: 'result', test: t.name, mbps: null, iops: null, ok: false, error: why });
+        if (!best) onEvent({ type: 'result', test: t.name, mbps: null, iops: null, ok: false, error: why });
       }
       cleanup();
       if (canceled) return onEnd('canceled');

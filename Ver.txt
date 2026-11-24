@@ -1,6 +1,9 @@
 smartDisk 版本记录 / Version history
 （最新的在最上面 / newest first）
 
+0.8.3  2026-11-25
+  - 测速每项测 3 次取最好成绩（和 CrystalDiskMark 一样），数字更稳定、更接近 CrystalDiskMark。测速时间约 4 分钟。
+
 0.8.2  2026-11-25
   - 修正测速：顺序 Q8 和随机 Q32 测试之前会失败（DiskSpd 编译时漏了关闭调试检查），现在 8 项都能测。
 
