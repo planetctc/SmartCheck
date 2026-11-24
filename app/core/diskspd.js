@@ -1,23 +1,25 @@
 // Benchmark with Microsoft DiskSpd (MIT, built from source in CI), the same engine CrystalDiskMark uses,
-// with CrystalDiskMark-style settings: 1 GiB test file of random data, 5 s per test, 5 s rest between tests,
-// write-through + no OS cache (-Sh), each test run 3 times keeping the best. Emits the same events as `smartdisk-helper bench`.
+// with CrystalDiskMark 8 default settings: 1 GiB test file of random data, no OS cache (-S), 5 s per run,
+// one warm-up run plus 3 counted runs per test (best one kept), 5 s rest between tests. Emits the same events as `smartdisk-helper bench`.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
 
 const FILE_SIZE = 1024 * 1024 * 1024;
+// Same order and switches as CrystalDiskMark 8 (DiskBench.cpp): all reads, then all writes;
+// "-W0 -S -ag -L", plus a random write buffer of one block (-Z<block>) for writes.
 const TESTS = [
-  { name: 'seqRead', args: ['-b1M', '-o8', '-t1', '-w0'] },
-  { name: 'seqWrite', args: ['-b1M', '-o8', '-t1', '-w100'] },
-  { name: 'seqQ1Read', args: ['-b1M', '-o1', '-t1', '-w0'] },
-  { name: 'seqQ1Write', args: ['-b1M', '-o1', '-t1', '-w100'] },
-  { name: 'rnd4kQ32Read', args: ['-b4K', '-o32', '-t1', '-r', '-w0'] },
-  { name: 'rnd4kQ32Write', args: ['-b4K', '-o32', '-t1', '-r', '-w100'] },
-  { name: 'rnd4kQ1Read', args: ['-b4K', '-o1', '-t1', '-r', '-w0'] },
-  { name: 'rnd4kQ1Write', args: ['-b4K', '-o1', '-t1', '-r', '-w100'] },
+  { name: 'seqRead', args: ['-b1024K', '-o8', '-t1', '-W0', '-S', '-w0'] },
+  { name: 'seqQ1Read', args: ['-b1024K', '-o1', '-t1', '-W0', '-S', '-w0'] },
+  { name: 'rnd4kQ32Read', args: ['-b4K', '-o32', '-t1', '-W0', '-S', '-w0', '-r'] },
+  { name: 'rnd4kQ1Read', args: ['-b4K', '-o1', '-t1', '-W0', '-S', '-w0', '-r'] },
+  { name: 'seqWrite', args: ['-b1024K', '-o8', '-t1', '-W0', '-S', '-w100', '-Z1024K'] },
+  { name: 'seqQ1Write', args: ['-b1024K', '-o1', '-t1', '-W0', '-S', '-w100', '-Z1024K'] },
+  { name: 'rnd4kQ32Write', args: ['-b4K', '-o32', '-t1', '-W0', '-S', '-w100', '-r', '-Z4K'] },
+  { name: 'rnd4kQ1Write', args: ['-b4K', '-o1', '-t1', '-W0', '-S', '-w100', '-r', '-Z4K'] },
 ];
-const COMMON = ['-d5', '-W0', '-Sh', '-Z64M', '-Rxml'];
+const COMMON = ['-ag', '-d5', '-L', '-Rxml'];
 const REST_MS = 5000;
 const RUNS = 3;
 
@@ -94,12 +96,13 @@ function runBench({ exe, letter, logFile, onEvent, onEnd }) {
       if (!ok || canceled) { cleanup(); return onEnd('canceled'); }
 
       for (const t of TESTS) {
-        // Like CrystalDiskMark: run each test RUNS times and keep the best result.
+        onEvent({ type: 'phase', name: t.name, run: 0, runs: RUNS });
+        await sleep(REST_MS);   // CrystalDiskMark's 5 s interval between tests
+        if (canceled) break;
         let best = null, why = '';
-        for (let run = 1; run <= RUNS && !canceled; run++) {
+        // Like CrystalDiskMark: one warm-up run that is not counted, then RUNS runs back to back; keep the best.
+        for (let run = 0; run <= RUNS && !canceled; run++) {
           onEvent({ type: 'phase', name: t.name, run, runs: RUNS });
-          await sleep(REST_MS);
-          if (canceled) break;
           // One retry: a test can fail if something (e.g. antivirus) briefly holds the test file.
           let r = null;
           for (let attempt = 1; attempt <= 2 && !r && !canceled; attempt++) {
@@ -107,13 +110,13 @@ function runBench({ exe, letter, logFile, onEvent, onEnd }) {
             if (canceled) break;
             const out = await runOnce(t);
             r = parseResult(out.stdout);
-            if (r) log(`${t.name} run ${run}: ${r.mbps} MB/s, ${r.iops} IOPS (diskspd ${out.args.join(' ')})`);
+            if (r) log(`${t.name} ${run ? `run ${run}` : 'warm-up'}: ${r.mbps} MB/s, ${r.iops} IOPS (diskspd ${out.args.join(' ')})`);
             else {
               why = failText(out);
               log(`${t.name} run ${run} attempt ${attempt} failed: ${why}\n--- stdout ---\n${out.stdout.slice(0, 4000)}\n--- stderr ---\n${out.stderr.slice(0, 4000)}`);
             }
           }
-          if (r && (!best || r.mbps > best.mbps)) {
+          if (run > 0 && r && (!best || r.mbps > best.mbps)) {
             best = r;
             onEvent({ type: 'result', test: t.name, mbps: r.mbps, iops: r.iops, ok: true });
           }
