@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Injected into the DiskSpd build: static CRT so diskspd.exe runs on a clean Windows without the VC++ redistributable. -->
+<!-- Injected into the DiskSpd build: static CRT so diskspd.exe runs on a clean Windows without the VC++ redistributable,
+     and NDEBUG so debug-only assert() checks are compiled out (DiskSpd's Release projects do not define it, and an
+     assert in the I/O dispatch loop aborts every test with queue depth > 1). -->
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
     <ClCompile>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
 </Project>
