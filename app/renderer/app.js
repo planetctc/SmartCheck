@@ -290,12 +290,10 @@ $('#refresh').addEventListener('click', scan);
 $('#updBtn').addEventListener('click', () => window.smartdisk.checkUpdate());
 
 // ---- PDF report ----
-const SHOP_FIELDS = ['shopName', 'shopAddress', 'shopContact'];
 $('#reportBtn').addEventListener('click', async () => {
   const f = $('#reportForm');
   try {
     const s = await window.smartdisk.settings();
-    for (const k of SHOP_FIELDS) f.elements[k].value = s[k] || '';
     f.elements.technician.value = s.technician || '';
   } catch {}
   $('#reportMsg').textContent = '';
@@ -311,7 +309,6 @@ $('#reportForm').addEventListener('submit', async (e) => {
     orderNo: f.elements.orderNo.value.trim(),
     technician: f.elements.technician.value.trim(),
     note: f.elements.note.value.trim(),
-    shop: Object.fromEntries(SHOP_FIELDS.map(k => [k, f.elements[k].value.trim()])),
   };
   $('#reportGo').disabled = true;
   $('#reportMsg').textContent = '正在生成…';
@@ -322,6 +319,38 @@ $('#reportForm').addEventListener('submit', async (e) => {
   } catch (err) {
     $('#reportMsg').textContent = '生成失败：' + (err?.message || err);
   } finally { $('#reportGo').disabled = false; }
+});
+
+// ---- settings (shop info + WhatsApp button for customer alerts) ----
+const SET_FIELDS = ['shopName', 'shopAddress', 'shopContact', 'whatsapp'];
+function waHint() {
+  const f = $('#setForm');
+  const on = f.elements.whatsappOn.checked;
+  const digits = f.elements.whatsapp.value.replace(/\D/g, '');
+  f.elements.whatsapp.disabled = !on;
+  $('#waHint').textContent = !on ? '客户提醒窗口不会显示 WhatsApp 按钮。'
+    : digits.length >= 8 ? `客户按下后会打开 wa.me/${digits}，问题内容会自动填好。` : '请填号码，否则不会显示按钮。';
+}
+$('#setBtn').addEventListener('click', async () => {
+  const f = $('#setForm');
+  try {
+    const s = await window.smartdisk.settings();
+    for (const k of SET_FIELDS) f.elements[k].value = s[k] || '';
+    f.elements.whatsappOn.checked = s.whatsappOn === '1';
+  } catch {}
+  $('#setMsg').textContent = '';
+  waHint();
+  $('#settings').showModal();
+});
+$('#setForm').addEventListener('input', waHint);
+$('#setForm').addEventListener('submit', async (e) => {
+  if (e.submitter?.value !== 'ok') return;
+  e.preventDefault();
+  const f = e.target;
+  const v = Object.fromEntries(SET_FIELDS.map(k => [k, f.elements[k].value.trim()]));
+  v.whatsappOn = f.elements.whatsappOn.checked ? '1' : '';
+  try { await window.smartdisk.saveSettings(v); $('#settings').close(); }
+  catch (err) { $('#setMsg').textContent = '保存失败：' + (err?.message || err); }
 });
 
 $('#aboutBtn').addEventListener('click', async () => {

@@ -157,3 +157,9 @@ table.bench .r { text-align: right; }
 .scan-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--muted); font-size: 12px; }
 .scan-stats b { color: var(--text); font-variant-numeric: tabular-nums; }
 .scan-intro { padding: 8px 0; }
+dialog.form-dlg .set-note { margin-bottom: 12px; }
+dialog.form-dlg fieldset.set-wa { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px 4px; margin: 4px 0 6px; }
+dialog.form-dlg fieldset.set-wa legend { color: var(--text); font-weight: 600; font-size: 13px; padding: 0 4px; }
+dialog.form-dlg label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
+dialog.form-dlg input:disabled { opacity: .5; }
+#waHint { margin: -4px 0 8px; }

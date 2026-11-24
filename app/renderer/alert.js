@@ -11,6 +11,7 @@ function render(p) {
       <b>${esc(a.model)}${a.letters?.length ? ` <span class="muted">（${esc(a.letters.join(' '))}）</span>` : ''}</b>
       <ul>${a.text.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`).join('');
   document.querySelector('.alert-tip').style.display = hotOnly ? 'none' : '';
+  $('#wa').hidden = !p.whatsapp;
   $('#shop').textContent = [p.shopName, p.shopContact].filter(Boolean).join(' · ');
 }
 
