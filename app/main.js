@@ -112,18 +112,25 @@ function startTask(kind, diskIndex, letter) {
   return { ok: true, key };
 }
 
-// ---- settings (shop info for the report), stored in %APPDATA%\smartDisk\settings.json ----
+// ---- settings: shop info for the report and the customer alert ----
+// Stored in %ProgramData%\smartDisk\settings.json so the tray monitor sees them for every Windows user.
+// Other shops using smartDisk put their own name and WhatsApp number here (or turn the button off).
 const DEFAULT_SETTINGS = {
   shopName: 'PLANET COMPUTER TECHNOLOGY CENTRE',
   shopAddress: 'Batu Gajah, Perak',
   shopContact: 'WhatsApp +60 12-510 5542 · planet@planetctc.com.my',
   technician: '',
+  whatsapp: '+60 12-510 5542',
+  whatsappOn: '1',
 };
-const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+const settingsFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'settings.json');
+const oldSettingsFile = () => path.join(app.getPath('userData'), 'settings.json');   // before 0.6.1
 const OLD_EMAIL = 'planetctc@gmail.com';
 function loadSettings() {
   try {
-    const s = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) };
+    let text;
+    try { text = fs.readFileSync(settingsFile(), 'utf8'); } catch { text = fs.readFileSync(oldSettingsFile(), 'utf8'); }
+    const s = { ...DEFAULT_SETTINGS, ...JSON.parse(text) };
     // Saved by 0.3.0 with the old shop email: switch to the new one.
     if (s.shopContact.includes(OLD_EMAIL)) s.shopContact = s.shopContact.replace(OLD_EMAIL, 'planet@planetctc.com.my');
     return s;
@@ -140,7 +147,7 @@ function saveSettings(s) {
 // ---- PDF report ----
 async function makeReport(form) {
   const scan = lastScan || await scanDisks();
-  const settings = saveSettings({ ...loadSettings(), ...form.shop, technician: form.technician });
+  const settings = saveSettings({ ...loadSettings(), technician: form.technician });
   const payload = {
     scan, settings, tests: testResults, version: app.getVersion(),
     customer: String(form.customer || '').slice(0, 120),
@@ -241,9 +248,12 @@ function setMonitorTask(enabled) {
   });
 }
 
+// Digits for wa.me, or '' when the shop turned the button off or left the number empty.
 function whatsappNumber() {
-  const m = /WhatsApp\s*([+\d][\d\s-]{6,})/i.exec(loadSettings().shopContact || '');
-  return (m ? m[1] : '+60 12-510 5542').replace(/\D/g, '');
+  const st = loadSettings();
+  if (st.whatsappOn !== '1') return '';
+  const digits = String(st.whatsapp || '').replace(/\D/g, '');
+  return digits.length >= 8 ? digits : '';
 }
 
 function showAlerts(alerts, scan) {
@@ -275,13 +285,13 @@ function openAlertWindow() {
 
 function alertPayload() {
   const st = loadSettings();
-  return { alerts: pendingAlerts, shopName: st.shopName, shopContact: st.shopContact };
+  return { alerts: pendingAlerts, shopName: st.shopName, shopContact: st.shopContact, whatsapp: !!whatsappNumber() };
 }
 
 function alertAction(action) {
-  if (action === 'whatsapp') {
+  if (action === 'whatsapp' && whatsappNumber()) {
     const a = pendingAlerts;
-    const lines = ['你好 PLANET，smartDisk 提醒我的硬盘有问题：', ...a.map(x => `- ${x.model}${x.letters.length ? ' (' + x.letters.join(' ') + ')' : ''}：${x.text.join('；')}`),
+    const lines = [`你好 ${loadSettings().shopName || ''}，smartDisk 提醒我的硬盘有问题：`.replace('你好 ，', '你好，'), ...a.map(x => `- ${x.model}${x.letters.length ? ' (' + x.letters.join(' ') + ')' : ''}：${x.text.join('；')}`),
       `电脑：${a[0]?.pc || os.hostname()}`];
     shell.openExternal(`https://wa.me/${whatsappNumber()}?text=${encodeURIComponent(lines.join('\n'))}`);
   } else if (action === 'open') {
@@ -310,14 +320,12 @@ function updateTrayTip(scan) {
   tray.setToolTip(`smartDisk 硬盘监控\n${parts.join('\n')}`.slice(0, 127));
 }
 
-function startMonitor() {
-  const img = nativeImage.createFromPath(path.join(__dirname, 'icon.png')).resize({ width: 16, height: 16 });
-  tray = new Tray(img);
-  tray.setToolTip('smartDisk 硬盘监控');
+function refreshTrayMenu() {
+  if (!tray) return;
   const menu = Menu.buildFromTemplate([
     { label: '打开 smartDisk', click: () => createWindow() },
     { label: '立即检查', click: () => monitorCheck(true) },
-    { label: 'WhatsApp 联系 PLANET', click: () => shell.openExternal(`https://wa.me/${whatsappNumber()}`) },
+    ...(whatsappNumber() ? [{ label: 'WhatsApp 联系我们', click: () => shell.openExternal(`https://wa.me/${whatsappNumber()}`) }] : []),
     { type: 'separator' },
     { label: '以目前状态为基准', click: async () => {
       const r = await dialog.showMessageBox({ type: 'question', buttons: ['确定', '取消'], cancelId: 1, title: 'smartDisk',
@@ -336,6 +344,13 @@ function startMonitor() {
     } },
   ]);
   tray.setContextMenu(menu);
+}
+
+function startMonitor() {
+  const img = nativeImage.createFromPath(path.join(__dirname, 'icon.png')).resize({ width: 16, height: 16 });
+  tray = new Tray(img);
+  tray.setToolTip('smartDisk 硬盘监控');
+  refreshTrayMenu();
   tray.on('double-click', () => createWindow());
   setTimeout(() => monitorCheck(false), 2 * 60 * 1000);
   setInterval(() => monitorCheck(false), CHECK_EVERY_MS);
@@ -350,6 +365,7 @@ ipcMain.handle('monitor:get', () => loadMonitor());
 ipcMain.handle('alert:action', (_e, a) => alertAction(String(a)));
 ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('settings:get', () => loadSettings());
+ipcMain.handle('settings:save', (_e, v) => { const r = saveSettings({ ...loadSettings(), ...(v || {}) }); refreshTrayMenu(); return r; });
 ipcMain.handle('report:make', (_e, form) => makeReport(form || {}));
 ipcMain.handle('task:start', (_e, a) => startTask(a?.kind === 'bench' ? 'bench' : 'scan', Number(a?.disk), a?.letter));
 ipcMain.handle('task:cancel', () => { if (task) task.cancel(); return true; });

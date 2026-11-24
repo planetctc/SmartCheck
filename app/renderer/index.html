@@ -29,7 +29,7 @@
       </label>
       <div id="scanTime" class="muted small"></div>
       <div id="notice" class="notice small"></div>
-      <div class="legal small">© 2026 PLANET COMPUTER TECHNOLOGY CENTRE · <button type="button" class="linkbtn" id="aboutBtn">关于</button></div>
+      <div class="legal small">© 2026 PLANET COMPUTER TECHNOLOGY CENTRE · <button type="button" class="linkbtn" id="setBtn">设置</button> · <button type="button" class="linkbtn" id="aboutBtn">关于</button></div>
     </div>
   </aside>
 
@@ -54,17 +54,33 @@
       <label>单号（发票 / 订单）<input name="orderNo" maxlength="60" placeholder="例如：INV-2026-0123"></label>
       <label>检测人员<input name="technician" maxlength="60"></label>
       <label>备注<textarea name="note" rows="3" maxlength="1000" placeholder="例如：出机检测 / 保修 1 年"></textarea></label>
-      <details>
-        <summary>店铺信息（印在报告右上角）</summary>
-        <label>店名<input name="shopName" maxlength="200"></label>
-        <label>地址<input name="shopAddress" maxlength="200"></label>
-        <label>联系方式<input name="shopContact" maxlength="200"></label>
-      </details>
+      <div class="small muted">店名和联系方式在左下角「设置」里修改。</div>
       <div class="row-btns">
         <button value="cancel" formnovalidate>取消</button>
         <button id="reportGo" value="ok" class="primary">生成 PDF</button>
       </div>
       <div id="reportMsg" class="small muted"></div>
+    </form>
+  </dialog>
+
+  <dialog id="settings" class="form-dlg">
+    <form id="setForm" method="dialog">
+      <h2>设置</h2>
+      <div class="small muted set-note">店铺信息会印在检测报告上，也会显示在客户电脑的硬盘提醒窗口里。</div>
+      <label>店名<input name="shopName" maxlength="200"></label>
+      <label>地址<input name="shopAddress" maxlength="200"></label>
+      <label>联系方式（印在报告上）<input name="shopContact" maxlength="200"></label>
+      <fieldset class="set-wa">
+        <legend>客户提醒里的 WhatsApp 按钮</legend>
+        <label class="check"><input type="checkbox" name="whatsappOn"> 显示 WhatsApp 按钮</label>
+        <label>WhatsApp 号码（含国家代码）<input name="whatsapp" maxlength="40" placeholder="例如：+60 12-345 6789"></label>
+        <div id="waHint" class="small muted"></div>
+      </fieldset>
+      <div class="row-btns">
+        <button value="cancel" formnovalidate>取消</button>
+        <button id="setGo" value="ok" class="primary">保存</button>
+      </div>
+      <div id="setMsg" class="small muted"></div>
     </form>
   </dialog>
 
