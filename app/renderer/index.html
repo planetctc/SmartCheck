@@ -7,30 +7,32 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><span class="logo">◆</span> SmartDisk <small>硬盘健康检测</small></div>
-    <div class="actions">
-      <select id="theme" title="皮肤">
-        <option value="slate">石墨（默认）</option>
-        <option value="light">明亮</option>
-        <option value="ocean">海蓝</option>
-        <option value="forest">森林</option>
-        <option value="sunset">落日</option>
-      </select>
-      <button id="refresh">重新检测</button>
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" class="logo" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="4"/><circle cx="12" cy="12" r="3.2"/></svg>
+      <div><div class="name">SmartDisk</div><div class="sub">硬盘健康检测</div></div>
     </div>
-  </header>
-
-  <nav id="tabs" class="tabs"></nav>
+    <div class="side-title">硬盘</div>
+    <nav id="diskList" class="disk-list"></nav>
+    <div class="side-foot">
+      <button id="refresh" class="primary">重新检测</button>
+      <label class="theme-pick">皮肤
+        <select id="theme">
+          <option value="slate">石墨</option>
+          <option value="light">明亮</option>
+          <option value="ocean">海蓝</option>
+          <option value="forest">森林</option>
+          <option value="sunset">落日</option>
+        </select>
+      </label>
+      <div id="scanTime" class="muted small"></div>
+      <div id="notice" class="notice small"></div>
+    </div>
+  </aside>
 
   <main id="detail" class="detail">
     <p class="muted">正在读取硬盘信息…</p>
   </main>
-
-  <footer class="footer">
-    <span id="scanTime"></span>
-    <span id="notice"></span>
-  </footer>
 
   <script src="app.js"></script>
 </body>
