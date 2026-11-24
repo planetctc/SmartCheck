@@ -128,3 +128,32 @@ dialog.form-dlg .row-btns { justify-content: flex-end; }
 .sys-card .attr.nv .r { text-align: left; }
 .disk.sys { margin-bottom: 6px; }
 .metric.txt .v { font-size: 17px; line-height: 33px; }
+
+/* ---------- benchmark / surface scan ---------- */
+.tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; margin-bottom: 18px; }
+.tool { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.tool h3 { margin: 0; font-size: 15px; }
+.tool h3 small { font-weight: 500; font-size: 12px; margin-left: 4px; }
+.tool-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; }
+.tool-foot button.go { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; white-space: nowrap; }
+.tool-foot button:disabled { opacity: .5; cursor: default; }
+.tool-status { display: flex; align-items: center; gap: 8px; color: var(--accent); font-weight: 600; }
+.spin { width: 14px; height: 14px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+table.bench { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.bench th { color: var(--muted); font-size: 12px; font-weight: 500; text-align: left; padding: 2px 4px; }
+table.bench td { padding: 6px 4px; border-top: 1px solid var(--border); }
+table.bench td.r { font-size: 18px; font-weight: 700; }
+table.bench .r { text-align: right; }
+.cells { display: grid; grid-template-columns: repeat(50, 1fr); gap: 1px; }
+.cells i, .legend-row i { display: block; aspect-ratio: 1; border-radius: 1px; background: var(--panel-2); }
+.legend-row { display: flex; align-items: center; gap: 4px; }
+.legend-row i { width: 10px; margin-left: 8px; }
+.legend-row i:first-child { margin-left: 0; }
+.c0 { background: var(--good) !important; opacity: .75; }
+.c1 { background: var(--warn) !important; }
+.c2 { background: #e0661b !important; }
+.c3 { background: var(--bad) !important; }
+.scan-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--muted); font-size: 12px; }
+.scan-stats b { color: var(--text); font-variant-numeric: tabular-nums; }
+.scan-intro { padding: 8px 0; }

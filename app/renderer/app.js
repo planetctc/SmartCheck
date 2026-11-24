@@ -91,6 +91,106 @@ function rawTable(d, s) {
   </div></details>`;
 }
 
+// ---- benchmark / surface scan ----
+const BENCH_ROWS = [['顺序 1M Q8', 'seqRead', 'seqWrite'], ['随机 4K Q32', 'rnd4kQ32Read', 'rnd4kQ32Write'], ['随机 4K Q1', 'rnd4kQ1Read', 'rnd4kQ1Write']];
+const PHASE_TEXT = { prepare: '准备测试文件', seqRead: '顺序读取', seqWrite: '顺序写入', rnd4kQ32Read: '4K 随机读取 (Q32)', rnd4kQ32Write: '4K 随机写入 (Q32)', rnd4kQ1Read: '4K 随机读取 (Q1)', rnd4kQ1Write: '4K 随机写入 (Q1)' };
+const tests = {};   // disk key -> { bench, scan }, mirrors main's results plus live progress
+let running = null; // { kind, key }
+
+function diskKey(d) { return d.serial || `${d.model}#${d.index}`; }
+function isSsd(d) { return d.bus === 'nvme' || d.rpm === 1; }
+function dur(sec) {
+  if (sec == null || !isFinite(sec)) return '-';
+  sec = Math.round(sec);
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
+  return h ? `${h} 小时 ${m} 分` : m ? `${m} 分 ${sec % 60} 秒` : `${sec} 秒`;
+}
+function mbps(v) { return v == null ? '-' : v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(v >= 10 ? 1 : 2); }
+
+function benchCard(d, t) {
+  const b = t.bench;
+  const busy = running && running.kind === 'bench' && running.key === diskKey(d);
+  const letter = d.letters?.[0];
+  const rows = BENCH_ROWS.map(([label, r, w]) => `<tr><td>${label}</td><td class="r">${mbps(b?.results?.[r]?.mbps)}</td><td class="r">${mbps(b?.results?.[w]?.mbps)}</td></tr>`).join('');
+  let foot;
+  if (busy) foot = `<div class="tool-status"><span class="spin"></span>${esc(PHASE_TEXT[b?.phase] || '准备中')}…</div><button class="cancel">停止</button>`;
+  else if (!letter) foot = `<div class="muted small">这块硬盘没有分区（盘符），无法测速。</div>`;
+  else foot = `<div class="muted small">${b?.status === 'done' ? `${esc(b.letter)} 盘 · ${new Date(b.finishedAt).toLocaleTimeString()} 测完` : b?.error ? `<span class="st-bad">测速失败：${esc(b.error === 'not enough free space' ? `${letter} 盘空间不足 1.3 GB` : b.error)}</span>` : `在 ${esc(letter)} 盘写入 1 GB 临时文件，约 40 秒，测完自动删除。`}</div>
+      <button class="go" data-kind="bench" ${running ? 'disabled' : ''}>${b?.status === 'done' ? '重新测速' : '开始测速'}</button>`;
+  return `<div class="tool"><h3>硬盘测速 <small class="muted">MB/s</small></h3>
+    <table class="bench"><thead><tr><th></th><th class="r">读取</th><th class="r">写入</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="tool-foot">${foot}</div></div>`;
+}
+
+function scanCard(d, t) {
+  const sc = t.scan;
+  const busy = running && running.kind === 'scan' && running.key === diskKey(d);
+  const est = d.sizeBytes / ((isSsd(d) ? (d.bus === 'nvme' ? 1500 : 450) : 150) * 1e6);
+  let body = '';
+  if (sc && sc.cells) {
+    body = `<div class="cells">${sc.cells.map(v => `<i class="c${v}"></i>`).join('')}</div>
+      <div class="scan-stats">
+        <span>进度 <b>${(sc.pct || 0).toFixed(1)}%</b></span>
+        <span>坏道 <b class="${sc.bad ? 'st-bad' : ''}">${num(sc.bad || 0)}</b></span>
+        <span>慢区 <b class="${sc.slow || sc.verySlow ? 'st-warn' : ''}">${num((sc.slow || 0) + (sc.verySlow || 0))}</b></span>
+        <span>速度 <b>${mbps(sc.mbps)}</b> MB/s</span>
+        ${busy && sc.pct > 0.2 ? `<span>剩余约 <b>${dur(sc.elapsed * (100 - sc.pct) / sc.pct)}</b></span>` : ''}
+      </div>`;
+  } else {
+    body = `<div class="muted small scan-intro">逐个扇区读取整块硬盘，只读不写，不会改动资料。找出读不到的坏道和读取很慢的区域。</div>`;
+  }
+  let foot;
+  if (busy) foot = `<div class="tool-status"><span class="spin"></span>正在扫描…</div><button class="cancel">停止</button>`;
+  else {
+    const last = sc?.status === 'done' ? `扫描完成，用时 ${dur(sc.seconds)}` : sc?.status === 'canceled' ? `已停止（扫描了 ${(sc.pct || 0).toFixed(1)}%）` : sc?.status === 'error' ? `<span class="st-bad">扫描失败：${esc(sc.error || '')}</span>` : `预计 ${dur(est)}`;
+    foot = `<div class="muted small">${last}</div><button class="go" data-kind="scan" ${running ? 'disabled' : ''}>${sc ? '重新扫描' : '开始扫描'}</button>`;
+  }
+  return `<div class="tool"><h3>坏道扫描 <small class="muted">只读</small></h3>${body}
+    <div class="legend-row small muted"><i class="c0"></i>正常 <i class="c1"></i>慢 <i class="c2"></i>很慢 <i class="c3"></i>坏道</div>
+    <div class="tool-foot">${foot}</div></div>`;
+}
+
+function renderTools() {
+  const el = $('#tools');
+  if (!el || current < 0) return;
+  const d = data.disks[current];
+  const t = tests[diskKey(d)] || {};
+  el.innerHTML = benchCard(d, t) + scanCard(d, t);
+  el.querySelectorAll('button.go').forEach(b => b.onclick = async () => {
+    const kind = b.dataset.kind;
+    if (kind === 'scan' && !confirmScan(d)) return;
+    const key = diskKey(d);
+    tests[key] = { ...tests[key], [kind]: { status: 'running', results: {}, pct: 0 } };
+    running = { kind, key };
+    renderTools();
+    const r = await window.smartdisk.startTask(kind, d.index, d.letters?.[0]);
+    if (!r.ok) { running = null; tests[key][kind] = { status: 'error', error: r.error }; renderTools(); }
+  });
+  el.querySelectorAll('button.cancel').forEach(b => b.onclick = () => window.smartdisk.cancelTask());
+}
+
+function confirmScan(d) {
+  if (isSsd(d)) return true;
+  const est = d.sizeBytes / 150e6;
+  return est < 3600 || window.confirm(`机械硬盘全盘扫描预计要 ${dur(est)}，期间可以随时停止。要开始吗？`);
+}
+
+window.smartdisk.onTask?.((ev) => {
+  const t = (tests[ev.key] ||= {});
+  const cur = t[ev.kind] ||= { results: {} };
+  if (ev.type === 'phase') cur.phase = ev.name;
+  if (ev.type === 'result') cur.results = { ...cur.results, [ev.test]: { mbps: ev.mbps, iops: ev.iops } };
+  if (ev.type === 'start' && ev.kind === 'scan') cur.cells = new Array(ev.cells).fill(-1);
+  if (ev.type === 'progress' && ev.kind === 'scan') {
+    Object.assign(cur, { pct: ev.pct, bad: ev.bad, slow: ev.slow, verySlow: ev.verySlow, mbps: ev.mbps, elapsed: ev.elapsed });
+    (ev.cells || []).forEach((v, i) => { cur.cells[ev.from + i] = v; });
+  }
+  if (ev.type === 'error') cur.error = ev.message;
+  if (ev.type === 'end') { t[ev.kind] = { ...ev.result }; running = null; if (ev.kind === 'scan' && ev.result?.bad && current >= 0) return renderDetail(); }
+  if (current >= 0 && data.disks[current] && diskKey(data.disks[current]) === ev.key) renderTools();
+  else if (ev.type === 'end') renderTools();
+});
+
 // ---- rendering ----
 function renderList() {
   $('#diskList').innerHTML = data.disks.map((d, i) => {
@@ -149,6 +249,8 @@ function renderDetail() {
     return;
   }
   const banners = [];
+  const scanBad = tests[diskKey(d)]?.scan?.bad;
+  if (scanBad) banners.push(`<div class="banner bad">⚠ 坏道扫描发现 ${num(scanBad)} 个读不到的扇区。请先备份资料，建议更换这块硬盘。</div>`);
   if (s.firmwareWarning) banners.push(`<div class="banner bad">⚠ ${esc(s.firmwareWarning.text)}</div>`);
   if (s.link?.note) banners.push(`<div class="banner ${s.link.state === 'warn' ? 'warn' : 'info'}">${s.link.state === 'warn' ? '⚠' : 'ℹ'} 接口：${esc(s.link.note)}</div>`);
   $('#detail').innerHTML = head + banners.join('') + `
@@ -159,7 +261,9 @@ function renderDetail() {
       </div>
       <div class="metrics">${metricsFor(d, s)}</div>
     </section>
+    <section id="tools" class="tools"></section>
     ${rawTable(d, s)}`;
+  renderTools();
 }
 
 function render() {

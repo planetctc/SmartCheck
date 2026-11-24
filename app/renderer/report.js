@@ -15,9 +15,38 @@ function pill(s) { const [t, c] = STATUS[s] || STATUS.unknown; return `<span cla
 function raw(d, id) { return d.ata?.attributes.find(a => a.id === id)?.raw; }
 
 function overall(disks) {
+  // A surface scan that found unreadable sectors makes the drive "bad" whatever SMART says.
+  if (disks.some(d => (TESTS[d.serial || `${d.model}#${d.index}`]?.scan?.bad || 0) > 0)) return 'bad';
   const order = ['bad', 'warn', 'unknown', 'good'];
   for (const s of order) if (disks.some(d => d.summary.status === s)) return s;
   return 'unknown';
+}
+
+let TESTS = {};
+const fmtMb = v => v == null ? '-' : v >= 100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(v >= 10 ? 1 : 2);
+function dur(sec) { sec = Math.round(sec || 0); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60); return h ? `${h} h ${m} min` : m ? `${m} min` : `${sec} s`; }
+
+// Benchmark and surface-scan lines for one disk (only when they were run this session).
+function testLines(d) {
+  const t = TESTS[d.serial || `${d.model}#${d.index}`];
+  if (!t) return '';
+  const out = [];
+  const b = t.bench;
+  if (b && b.status === 'done') {
+    const r = b.results || {};
+    out.push(`<div class="test"><span>测速 Speed (${esc(b.letter)})</span>
+      顺序读 Seq R <b>${fmtMb(r.seqRead?.mbps)}</b> · 顺序写 Seq W <b>${fmtMb(r.seqWrite?.mbps)}</b> ·
+      4K Q32 读/写 <b>${fmtMb(r.rnd4kQ32Read?.mbps)}</b> / <b>${fmtMb(r.rnd4kQ32Write?.mbps)}</b> ·
+      4K Q1 读/写 <b>${fmtMb(r.rnd4kQ1Read?.mbps)}</b> / <b>${fmtMb(r.rnd4kQ1Write?.mbps)}</b> MB/s</div>`);
+  }
+  const sc = t.scan;
+  if (sc && sc.pct > 0) {
+    const full = sc.status === 'done';
+    const slow = (sc.slow || 0) + (sc.verySlow || 0);
+    const verdict = sc.bad ? `<b class="bad">发现 ${num(sc.bad)} 个坏道 Bad sectors found</b>` : slow ? `<b class="warn">无坏道，${num(slow)} 处读取较慢</b>` : `<b class="ok">无坏道 No bad sectors</b>`;
+    out.push(`<div class="test"><span>坏道扫描 Surface scan</span>${full ? `全盘 100%，用时 ${dur(sc.seconds)}` : `只扫描了 ${sc.pct.toFixed(1)}%（中途停止）`} · ${verdict}</div>`);
+  }
+  return out.join('');
 }
 
 function diskDetail(d, i) {
@@ -48,6 +77,7 @@ function diskDetail(d, i) {
     <div class="hd"><span>${i + 1}. ${esc(d.model) || '未知型号'} · ${BUS[d.bus] || esc(d.bus)} · ${size(d.sizeBytes)}</span>
       <span>${s.health != null ? s.health + '%' : '--'} ${pill(s.status)}</span></div>
     <div class="kv">${kv.map(([k, v]) => `<div><span>${k}</span>${v}</div>`).join('')}</div>
+    ${testLines(d)}
     ${why ? `<div class="why">⚠ ${why}</div>` : ''}
     ${alerts.join('')}
   </div>`;
@@ -73,6 +103,7 @@ function systemSection(sys) {
 }
 
 window.renderReport = (p) => {
+  TESTS = p.tests || {};
   const disks = p.scan.disks || [];
   const ov = overall(disks);
   const ovText = {
