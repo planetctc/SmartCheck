@@ -4,7 +4,7 @@
 
 店内自用的硬盘健康检测工具（Windows）。
 
-By PLANET COMPUTER TECHNOLOGY CENTRE, Batu Gajah, Perak. WhatsApp +60 12-510 5542, planetctc@gmail.com.
+By PLANET COMPUTER TECHNOLOGY CENTRE, Batu Gajah, Perak. WhatsApp +60 12-510 5542, planet@planetctc.com.my.
 
 ## 结构
 

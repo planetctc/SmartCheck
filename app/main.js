@@ -42,13 +42,18 @@ function scanDisks() {
 const DEFAULT_SETTINGS = {
   shopName: 'PLANET COMPUTER TECHNOLOGY CENTRE',
   shopAddress: 'Batu Gajah, Perak',
-  shopContact: 'WhatsApp +60 12-510 5542 · planetctc@gmail.com',
+  shopContact: 'WhatsApp +60 12-510 5542 · planet@planetctc.com.my',
   technician: '',
 };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+const OLD_EMAIL = 'planetctc@gmail.com';
 function loadSettings() {
-  try { return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; }
-  catch { return { ...DEFAULT_SETTINGS }; }
+  try {
+    const s = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) };
+    // Saved by 0.3.0 with the old shop email: switch to the new one.
+    if (s.shopContact.includes(OLD_EMAIL)) s.shopContact = s.shopContact.replace(OLD_EMAIL, 'planet@planetctc.com.my');
+    return s;
+  } catch { return { ...DEFAULT_SETTINGS }; }
 }
 function saveSettings(s) {
   const clean = {};
