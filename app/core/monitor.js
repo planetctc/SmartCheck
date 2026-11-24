@@ -3,7 +3,6 @@
 // Pure logic, no Electron: main.js stores the state in %ProgramData%\smartDisk\monitor.json.
 
 const HEALTH_DROP = 2;          // alert when health falls this many points (e.g. 100 -> 98)
-const WEAR_ONLY_FLOOR = 80;     // SSD wear alone only alerts once health is below this
 const HOT_REPEAT_MS = 24 * 3600 * 1000;
 const RANK = { good: 0, unknown: 0, warn: 1, bad: 2 };
 
@@ -54,8 +53,7 @@ function check(state, scan, now = Date.now()) {
     // Health drop.
     const drop = (ack.health ?? cur.health) - cur.health;
     const worse = RANK[cur.status] > RANK[ack.status || 'good'];
-    const wearOnly = !grew.length && !worse;
-    if (drop >= HEALTH_DROP && (!wearOnly || cur.health < WEAR_ONLY_FLOOR || d.rpm !== 1 && !d.nvme)) {
+    if (drop >= HEALTH_DROP) {   // every 2 points, SSD wear included (nick: 每两趴)
       msgs.unshift(`健康度从 ${ack.health}% 降到 ${cur.health}%（安装时 ${e.baseline.health}%）`);
     } else if (worse) {
       msgs.unshift(`硬盘状态变差：${cur.status === 'bad' ? '危险' : '需要注意'}（健康度 ${cur.health}%）`);
