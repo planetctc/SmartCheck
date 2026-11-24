@@ -1,7 +1,7 @@
 {
   "name": "smartdisk",
   "productName": "smartDisk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "smartDisk - 硬盘健康检测",
   "main": "app/main.js",
   "private": true,
@@ -9,7 +9,8 @@
     "start": "electron .",
     "start:mock": "cross-env SMARTDISK_MOCK=1 electron .",
     "build:helper": "cmake -S helper -B helper/build -A x64 && cmake --build helper/build --config Release",
-    "dist": "npm run build:helper && electron-builder --win nsis --x64 --publish never"
+    "dist": "npm run build:helper && electron-builder --win nsis --x64 --publish never",
+    "release": "npm run build:helper && electron-builder --win nsis --x64 --publish always"
   },
   "devDependencies": {
     "cross-env": "7.0.3",
@@ -52,7 +53,18 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
     },
-    "copyright": "Copyright (c) 2026 PLANET COMPUTER TECHNOLOGY CENTRE. All rights reserved."
+    "copyright": "Copyright (c) 2026 PLANET COMPUTER TECHNOLOGY CENTRE. All rights reserved.",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "planetctc",
+        "repo": "smartdisk-releases",
+        "releaseType": "release"
+      }
+    ]
   },
-  "author": "PLANET COMPUTER TECHNOLOGY CENTRE"
+  "author": "PLANET COMPUTER TECHNOLOGY CENTRE",
+  "dependencies": {
+    "electron-updater": "6.3.9"
+  }
 }

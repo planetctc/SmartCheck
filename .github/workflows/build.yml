@@ -1,8 +1,14 @@
 name: Build Windows installer
 
+# - Pull requests / pushes to main: build the installer and keep it as an Actions artifact.
+# - Push a tag like v0.3.0: build and publish a release to planetctc/smartdisk-releases,
+#   which installed copies of smartDisk pick up as an online update.
+#   Needs the repository secret RELEASES_TOKEN (a token that can write to smartdisk-releases).
+
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -14,10 +20,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci || npm install
-      - run: npm run dist
+      - run: npm install --no-audit --no-fund
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} does not match package.json version $v"; exit 1; }
+      - name: Build
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: npm run dist
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Build and publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm run release
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
           name: smartDisk-Setup

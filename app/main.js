@@ -1,8 +1,13 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { execFile } = require('child_process');
 const { evaluate } = require('./core/health');
+const { checkUpdate } = require('./core/updater');
+
+let win = null;
+let lastScan = null;
 
 // Packaged: resources/helper/smartdisk-helper.exe. Dev: ../helper/build/Release/...
 function helperPath() {
@@ -10,7 +15,7 @@ function helperPath() {
   return path.join(__dirname, '..', 'helper', 'build', 'Release', 'smartdisk-helper.exe');
 }
 
-// Single data entry point. A future Tailscale HTTP endpoint / PDF report reuse this.
+// Single data entry point. The PDF report (and a future Tailscale HTTP endpoint) reuse this.
 function scanDisks() {
   return new Promise((resolve) => {
     const exe = helperPath();
@@ -19,6 +24,8 @@ function scanDisks() {
       raw.disks = raw.disks.map(d => ({ ...d, summary: evaluate(d) }));
       raw.scannedAt = new Date().toISOString();
       raw.mock = useMock;
+      raw.computer = { name: os.hostname(), os: (os.version ? os.version() : os.type()) + ' ' + os.release() };
+      lastScan = raw;
       resolve(raw);
     };
     if (useMock) {
@@ -31,9 +38,64 @@ function scanDisks() {
   });
 }
 
+// ---- settings (shop info for the report), stored in %APPDATA%\smartDisk\settings.json ----
+const DEFAULT_SETTINGS = {
+  shopName: 'PLANET COMPUTER TECHNOLOGY CENTRE',
+  shopAddress: 'Batu Gajah, Perak',
+  shopContact: 'WhatsApp +60 12-510 5542 · planetctc@gmail.com',
+  technician: '',
+};
+const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
+function loadSettings() {
+  try { return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) }; }
+  catch { return { ...DEFAULT_SETTINGS }; }
+}
+function saveSettings(s) {
+  const clean = {};
+  for (const k of Object.keys(DEFAULT_SETTINGS)) clean[k] = String(s[k] ?? '').slice(0, 200);
+  fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
+  fs.writeFileSync(settingsFile(), JSON.stringify(clean, null, 2));
+  return clean;
+}
+
+// ---- PDF report ----
+async function makeReport(form) {
+  const scan = lastScan || await scanDisks();
+  const settings = saveSettings({ ...loadSettings(), ...form.shop, technician: form.technician });
+  const payload = {
+    scan, settings, version: app.getVersion(),
+    customer: String(form.customer || '').slice(0, 120),
+    orderNo: String(form.orderNo || '').slice(0, 60),
+    technician: settings.technician,
+    note: String(form.note || '').slice(0, 1000),
+    printedAt: new Date().toISOString(),
+  };
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  const safe = (payload.orderNo || stamp).replace(/[\\/:*?"<>|]/g, '_');
+  const { canceled, filePath } = await dialog.showSaveDialog(win, {
+    title: '保存检测报告',
+    defaultPath: path.join(app.getPath('documents'), `smartDisk-检测报告-${safe}.pdf`),
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+
+  const pdfWin = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, sandbox: true } });
+  try {
+    await pdfWin.loadFile(path.join(__dirname, 'renderer', 'report.html'));
+    await pdfWin.webContents.executeJavaScript(`window.renderReport(${JSON.stringify(payload)}); true`);
+    const pdf = await pdfWin.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'none' } });
+    fs.writeFileSync(filePath, pdf);
+  } finally {
+    pdfWin.destroy();
+  }
+  shell.openPath(filePath);
+  return { ok: true, filePath };
+}
+
 function createWindow() {
-  const win = new BrowserWindow({
-    width: 980, height: 680, minWidth: 820, minHeight: 560,
+  win = new BrowserWindow({
+    width: 1040, height: 700, minWidth: 860, minHeight: 580,
     title: 'smartDisk',
     icon: path.join(__dirname, 'icon.png'),
     autoHideMenuBar: true,
@@ -44,6 +106,17 @@ function createWindow() {
 
 ipcMain.handle('disks:scan', () => scanDisks());
 ipcMain.handle('app:version', () => app.getVersion());
+ipcMain.handle('settings:get', () => loadSettings());
+ipcMain.handle('report:make', (_e, form) => makeReport(form || {}));
+ipcMain.handle('update:check', () => checkUpdate(win, true));
 
-app.whenReady().then(createWindow);
+const single = app.requestSingleInstanceLock();
+if (!single) app.quit();
+app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+
+app.whenReady().then(() => {
+  createWindow();
+  // Look for a new version shortly after start (installed version only).
+  setTimeout(() => checkUpdate(win, false), 15000);
+});
 app.on('window-all-closed', () => app.quit());
