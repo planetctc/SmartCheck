@@ -201,3 +201,9 @@ button.danger:disabled { opacity: .45; }
 dialog.danger-dlg h2 { color: var(--bad); }
 .erase-what { margin-bottom: 10px; line-height: 1.5; }
 dialog.form-dlg label.chk { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
+/* licence / remote service box in Settings */
+dialog.form-dlg details.lic-box { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 8px; }
+dialog.form-dlg details.lic-box > div { margin-bottom: 8px; }
+.lic-mid b { font-family: ui-monospace, Consolas, monospace; letter-spacing: .5px; user-select: all; }
+.ok-txt { color: var(--good, #1a9f5a); font-weight: 600; }
+dialog.form-dlg { max-height: 92vh; overflow: auto; }

@@ -9,6 +9,8 @@ const { evaluate } = require('./core/health');
 const { checkUpdate, checkUpdateSilent } = require('./core/updater');
 const monitor = require('./core/monitor');
 const history = require('./core/history');
+const license = require('./core/license');
+const remote = require('./core/remote');
 const I18N = require('./renderer/i18n');
 const { L } = I18N;
 const { readSystemInfo } = require('./core/sysinfo');
@@ -187,6 +189,8 @@ const DEFAULT_SETTINGS = {
   whatsapp: '+60 12-510 5542',
   whatsappOn: '1',
   lang: 'zh',
+  remoteCustomer: '',   // PLANET remote alerts: whose PC this is, as shown to the shop
+  remoteUrl: '',        // the shop's Cloudflare service; empty = use REMOTE_URL
 };
 const settingsFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'settings.json');
 const oldSettingsFile = () => path.join(app.getPath('userData'), 'settings.json');   // before 0.6.1
@@ -270,6 +274,8 @@ let alertWin = null;
 let pendingAlerts = [];
 
 const monitorFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'monitor.json');
+const licenseFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'license.key');
+const deviceFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'device.json');
 const historyFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'history.json');
 function loadMonitor() { try { return JSON.parse(fs.readFileSync(monitorFile(), 'utf8')); } catch { return { enabled: true, disks: {} }; } }
 function saveMonitor(m) {
@@ -284,6 +290,21 @@ function updateMonitor(scan, notify) {
   const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan);
   saveMonitor({ ...m, disks: state.disks });
   if (notify && alerts.length) showAlerts(alerts, scan);
+  remoteSend(scan, alerts);
+}
+
+// ---- PLANET remote alerts (licensed PCs only) ----
+const REMOTE_URL = '';   // set once the shop's Cloudflare service is deployed
+const remoteUrl = () => (loadSettings().remoteUrl || REMOTE_URL).trim();
+let remoteLast = null;
+async function remoteSend(scan, alerts, force) {
+  try {
+    if (!scan || scan.mock || !license.status(licenseFile()).licensed || !remoteUrl()) return { ok: false, skipped: true };
+    let key = ''; try { key = fs.readFileSync(licenseFile(), 'utf8').trim(); } catch {}
+    const r = await remote.send({ url: remoteUrl(), key, customer: loadSettings().remoteCustomer, version: app.getVersion(), deviceFile: deviceFile(), scan, alerts, force });
+    if (!r.skipped) remoteLast = { ...r, at: new Date().toISOString() };
+    return r;
+  } catch (e) { return { ok: false, error: e.message }; }
 }
 
 function xmlEsc(v) { return String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -378,6 +399,7 @@ async function monitorCheck(manual) {
   const m = loadMonitor();
   const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan);
   saveMonitor({ ...m, disks: state.disks });
+  remoteSend(scan, alerts);
   if (alerts.length) showAlerts(alerts, scan);
   else if (manual) {
     const worst = scan.disks.filter(d => d.summary?.health != null).map(d => `${d.model}：${d.summary.health}%`).join('\n');
@@ -436,6 +458,12 @@ ipcMain.handle('disks:scan', async () => { const r = await scanDisks(); updateMo
 ipcMain.handle('alert:get', () => alertPayload());
 ipcMain.handle('monitor:get', () => loadMonitor());
 ipcMain.handle('history:get', () => history.load(historyFile()));
+ipcMain.handle('license:get', () => ({ ...license.status(licenseFile()), remoteUrl: remoteUrl(), builtInUrl: !!REMOTE_URL, last: remoteLast }));
+ipcMain.handle('license:set', (_e, key) => {
+  const r = license.activate(licenseFile(), String(key || ''));
+  return r.ok ? { ok: true, status: license.status(licenseFile()) } : { ok: false, why: r.why };
+});
+ipcMain.handle('remote:test', async () => remoteSend(lastScan || await scanDisksOnly(), [], true));
 ipcMain.handle('alert:action', (_e, a) => alertAction(String(a)));
 ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('settings:get', () => loadSettings());

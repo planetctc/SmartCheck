@@ -1,0 +1,77 @@
+name: Deploy remote service (Cloudflare)
+
+# PLANET-only remote alerts: deploys cloudflare/ to the shop's own Cloudflare account.
+# Repository secrets (Settings > Secrets and variables > Actions), set by the shop owner, never pasted anywhere else:
+#   CLOUDFLARE_API_TOKEN   API token with "Edit Cloudflare Workers" + "D1 Edit" permissions
+#   CLOUDFLARE_ACCOUNT_ID  the account id (Workers & Pages overview page)
+#   DASH_PASSWORD          password for the smartDisk back-office page
+#   TG_TOKEN, TG_CHAT      optional: Telegram bot token and chat id for instant alerts
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['cloudflare/**', '.github/workflows/cloudflare.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WRANGLER: npx --yes wrangler@4.168.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check secrets
+        id: chk
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not set; skipping deploy."
+            echo "go=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Database
+        if: steps.chk.outputs.go == '1'
+        run: |
+          id=$($WRANGLER d1 list --json | jq -r '.[] | select(.name=="smartdisk-remote") | .uuid')
+          if [ -z "$id" ]; then
+            $WRANGLER d1 create smartdisk-remote
+            id=$($WRANGLER d1 list --json | jq -r '.[] | select(.name=="smartdisk-remote") | .uuid')
+          fi
+          test -n "$id"
+          sed -i "s/__D1_ID__/$id/" wrangler.toml
+          $WRANGLER d1 execute smartdisk-remote --remote --file schema.sql
+
+      - name: Deploy
+        if: steps.chk.outputs.go == '1'
+        run: $WRANGLER deploy | tee deploy.log
+
+      - name: Secrets
+        if: steps.chk.outputs.go == '1'
+        env:
+          DASH_PASSWORD: ${{ secrets.DASH_PASSWORD }}
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+        run: |
+          for k in DASH_PASSWORD TG_TOKEN TG_CHAT; do
+            v="${!k}"
+            if [ -n "$v" ]; then printf '%s' "$v" | $WRANGLER secret put "$k" >/dev/null && echo "$k set"; else echo "$k not set"; fi
+          done
+
+      - name: Address
+        if: steps.chk.outputs.go == '1'
+        run: |
+          url=$(grep -o 'https://[^ ]*workers\.dev' deploy.log | head -1)
+          echo "Back-office page: $url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Back-office page: $url"
