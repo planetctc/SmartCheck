@@ -163,3 +163,28 @@ dialog.form-dlg fieldset.set-wa legend { color: var(--text); font-weight: 600; f
 dialog.form-dlg label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
 dialog.form-dlg input:disabled { opacity: .5; }
 #waHint { margin: -4px 0 8px; }
+
+/* buyback grade + health history */
+.tools2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.tools3 { grid-template-columns: minmax(0, 1fr); }
+.progress { height: 10px; border-radius: 6px; background: var(--border); overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--accent); }
+.st-last { font-size: 15px; }
+.tool-foot .btns { display: flex; gap: 8px; }
+.tool-foot button.st-go { white-space: nowrap; }
+.tool-foot button.st-go small { font-weight: 400; opacity: .75; }
+.grade-row { display: flex; gap: 14px; align-items: flex-start; }
+.grade-letter { font-size: 52px; font-weight: 800; line-height: 1; min-width: 44px; text-align: center; }
+.grade-text { font-weight: 600; margin-top: 4px; }
+.grade-card .reasons { margin: 6px 0 0; padding-left: 18px; text-align: left; }
+svg.hist { width: 100%; height: auto; }
+svg.hist text { font-size: 10px; fill: var(--muted); }
+svg.hist .g { stroke: var(--border); stroke-width: 1; }
+svg.hist path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+svg.hist .health { stroke: var(--good); }
+svg.hist .temp { stroke: var(--warn); stroke-dasharray: 4 3; }
+svg.hist .dmg { fill: var(--bad); }
+.legend-row i.lg-h, .legend-row i.lg-t { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin: 0 4px 0 8px; }
+.legend-row i.lg-h { background: var(--good); }
+.legend-row i.lg-t { background: var(--warn); }
+.hist-empty { padding: 20px 0; }

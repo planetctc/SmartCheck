@@ -8,6 +8,7 @@ const diskspd = require('./core/diskspd');
 const { evaluate } = require('./core/health');
 const { checkUpdate, checkUpdateSilent } = require('./core/updater');
 const monitor = require('./core/monitor');
+const history = require('./core/history');
 const I18N = require('./renderer/i18n');
 const { L } = I18N;
 const { readSystemInfo } = require('./core/sysinfo');
@@ -127,6 +128,39 @@ function startTask(kind, diskIndex, letter) {
   return { ok: true, key };
 }
 
+// ---- SMART self-test: the drive tests itself, the helper only starts it and reads the status ----
+const selfTestStarted = {};   // disk key -> 'short' | 'long' started in this session (for the report)
+const mockSelfTest = {};      // demo mode: disk index -> { what, at }
+
+function runHelperJson(args) {
+  return new Promise((resolve) => {
+    execFile(helperPath(), args, { windowsHide: true, timeout: 30000 }, (err, stdout) => {
+      const line = String(stdout || '').trim().split('\n').pop();
+      try { resolve(JSON.parse(line)); } catch { resolve({ ok: false, error: String(err?.message || 'no output') }); }
+    });
+  });
+}
+
+async function selfTest(diskIndex, what) {
+  const disk = lastScan?.disks?.find(d => d.index === diskIndex);
+  if (!disk) return { ok: false, error: 'nodisk' };
+  const key = diskKey(disk);
+  if (lastScan.mock || !fs.existsSync(helperPath())) {
+    const now = Date.now(), m = mockSelfTest[diskIndex];
+    if (what === 'short' || what === 'long') { mockSelfTest[diskIndex] = { what, at: now }; selfTestStarted[key] = what; return { ok: true, started: what }; }
+    if (what === 'abort') { delete mockSelfTest[diskIndex]; return { ok: true, started: 'abort' }; }
+    const len = m ? (m.what === 'short' ? 20000 : 60000) : 0, pct = m ? Math.min(100, Math.round((now - m.at) / len * 100)) : 100;
+    const st = { ok: true, kind: disk.nvme ? 'nvme' : 'sata', running: !!m && pct < 100, progress: pct, shortMin: 2, longMin: disk.nvme ? 10 : 240,
+      last: m && pct >= 100 ? { type: m.what, result: 'passed', code: 0, hours: disk.summary?.powerOnHours } : undefined };
+    if (st.last) testResults[key] = { ...testResults[key], selftest: st.last };
+    return st;
+  }
+  const r = await runHelperJson(['selftest', String(diskIndex), what]);
+  if (r.ok && r.started && what !== 'abort') selfTestStarted[key] = what;
+  if (r.ok && what === 'status' && r.last && !r.running && selfTestStarted[key]) testResults[key] = { ...testResults[key], selftest: r.last };
+  return r;
+}
+
 // ---- settings: shop info for the report and the customer alert ----
 // Stored in %ProgramData%\smartDisk\settings.json so the tray monitor sees them for every Windows user.
 // Other shops using smartDisk put their own name and WhatsApp number here (or turn the button off).
@@ -167,7 +201,7 @@ async function makeReport(form) {
   const scan = lastScan || await scanDisks();
   const settings = saveSettings({ ...loadSettings(), technician: form.technician });
   const payload = {
-    scan, settings, tests: testResults, version: app.getVersion(), lang: settings.lang,
+    scan, settings, tests: testResults, history: history.load(historyFile()), version: app.getVersion(), lang: settings.lang,
     customer: String(form.customer || '').slice(0, 120),
     orderNo: String(form.orderNo || '').slice(0, 60),
     technician: settings.technician,
@@ -221,6 +255,7 @@ let alertWin = null;
 let pendingAlerts = [];
 
 const monitorFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'monitor.json');
+const historyFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'history.json');
 function loadMonitor() { try { return JSON.parse(fs.readFileSync(monitorFile(), 'utf8')); } catch { return { enabled: true, disks: {} }; } }
 function saveMonitor(m) {
   try { fs.mkdirSync(path.dirname(monitorFile()), { recursive: true }); fs.writeFileSync(monitorFile(), JSON.stringify(m, null, 2)); } catch {}
@@ -229,6 +264,7 @@ function saveMonitor(m) {
 // Record a baseline for disks seen for the first time (also from normal scans, so the shop's own check sets it).
 function updateMonitor(scan, notify) {
   if (!scan || scan.mock) return;
+  history.record(historyFile(), scan);
   const m = loadMonitor();
   const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan);
   saveMonitor({ ...m, disks: state.disks });
@@ -323,6 +359,7 @@ function alertAction(action) {
 async function monitorCheck(manual) {
   const scan = await scanDisksOnly();
   if (!scan.disks?.length) return;
+  history.record(historyFile(), scan);
   const m = loadMonitor();
   const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan);
   saveMonitor({ ...m, disks: state.disks });
@@ -383,6 +420,7 @@ function startMonitor() {
 ipcMain.handle('disks:scan', async () => { const r = await scanDisks(); updateMonitor(r, false); return r; });
 ipcMain.handle('alert:get', () => alertPayload());
 ipcMain.handle('monitor:get', () => loadMonitor());
+ipcMain.handle('history:get', () => history.load(historyFile()));
 ipcMain.handle('alert:action', (_e, a) => alertAction(String(a)));
 ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('settings:get', () => loadSettings());
@@ -391,6 +429,7 @@ ipcMain.handle('report:make', (_e, form) => makeReport(form || {}));
 ipcMain.handle('task:start', (_e, a) => startTask(a?.kind === 'bench' ? 'bench' : 'scan', Number(a?.disk), a?.letter));
 ipcMain.handle('task:cancel', () => { if (task) task.cancel(); return true; });
 ipcMain.handle('task:results', () => testResults);
+ipcMain.handle('selftest', (_e, a) => selfTest(Number(a?.disk), ['short', 'long', 'abort'].includes(a?.what) ? a.what : 'status'));
 ipcMain.handle('update:check', () => checkUpdate(win, true));
 
 const single = app.requestSingleInstanceLock();

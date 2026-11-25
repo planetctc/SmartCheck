@@ -1,5 +1,6 @@
 const { firmwareWarning } = require('./firmware');
 const { L } = require('../renderer/i18n');
+const { grade, refurbCheck } = require('./assess');
 
 // Health rules shared by the UI and (later) the PDF report / remote HTTP endpoint.
 // Input: one disk object from smartdisk-helper JSON. Output: normalized summary.
@@ -184,6 +185,8 @@ function evaluate(disk) {
   base.link = linkInfo(disk);
   base.firmwareWarning = firmwareWarning(disk);
   base.kind = disk.rpm === 1 ? 'SSD' : disk.rpm > 1 ? `HDD ${disk.rpm} RPM` : '';
+  base.refurb = refurbCheck(disk, base);
+  base.grade = grade(disk, base);
   return base;
 }
 

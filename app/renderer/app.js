@@ -113,6 +113,7 @@ const PHASE_TEXT = () => ({ prepare: L('准备测试文件', 'Preparing test fil
 const tests = {};   // disk key -> { bench, scan }, mirrors main's results plus live progress
 let running = null; // { kind, key }
 let monitorState = null;  // baseline per disk from the background monitor
+let historyData = {};     // diskKey -> [{ t, h, c, p, w, e }] from history.json
 
 function diskKey(d) { return d.serial || `${d.model}#${d.index}`; }
 function isSsd(d) { return d.bus === 'nvme' || d.rpm === 1; }
@@ -209,6 +210,95 @@ window.smartdisk.onTask?.((ev) => {
   else if (ev.type === 'end') renderTools();
 });
 
+// ---- SMART self-test ----
+const selfTests = {};   // disk key -> last status from the helper
+let selfTestTimer = null;
+const ST_RESULT = () => ({ passed: [L('通过', 'Passed'), 'good'], aborted: [L('被中断', 'Aborted'), 'unknown'], interrupted: [L('被中断', 'Interrupted'), 'unknown'],
+  fatal: [L('失败（严重错误）', 'Failed (fatal error)'), 'bad'], failed: [L('失败', 'Failed'), 'bad'], failed_electrical: [L('失败（电路）', 'Failed (electrical)'), 'bad'],
+  failed_servo: [L('失败（伺服/寻道）', 'Failed (servo/seek)'), 'bad'], failed_read: [L('失败（读取）', 'Failed (read)'), 'bad'], failed_handling: [L('失败（可能摔过）', 'Failed (handling damage)'), 'bad'], unknown: [L('未知', 'Unknown'), 'unknown'] });
+
+function selfTestCard(d) {
+  const st = selfTests[diskKey(d)];
+  let body;
+  if (!st) body = `<div class="muted small">${L('读取中…', 'Reading…')}</div>`;
+  else if (!st.ok) body = `<div class="muted small">${L('这块硬盘或 Windows 不支持从这里启动自检。', 'This drive (or Windows) does not let smartDisk start a self-test.')}</div>`;
+  else if (st.running) body = `<div class="progress"><i style="width:${st.progress || 0}%"></i></div><div class="small">${L(`自检进行中 ${st.progress || 0}%，可以继续用电脑。`, `Self-test running ${st.progress || 0}%. You can keep using the PC.`)}</div>`;
+  else if (st.last) {
+    const [t, c] = ST_RESULT()[st.last.result] || ST_RESULT().unknown;
+    body = `<div class="st-last"><b style="color:${color(c)}">${t}</b> <span class="muted small">${st.last.type === 'long' ? L('长测', 'Long test') : st.last.type === 'short' ? L('短测', 'Short test') : ''}${st.last.hours != null ? L(` · 通电第 ${num(st.last.hours)} 小时做的`, ` · at ${num(st.last.hours)} power-on hours`) : ''}${st.last.lba != null ? ` · LBA ${num(st.last.lba)}` : ''}</span></div>`;
+  } else body = `<div class="muted small">${L('还没有做过自检。', 'No self-test recorded yet.')}</div>`;
+  const mins = (m) => m ? L(`约 ${m >= 120 ? Math.round(m / 60) + ' 小时' : m + ' 分钟'}`, `about ${m >= 120 ? Math.round(m / 60) + ' h' : m + ' min'}`) : '';
+  const foot = st?.running
+    ? `<div class="tool-status"><span class="spin"></span>${L('自检中…', 'Testing…')}</div><button class="st-go" data-what="abort">${L('停止', 'Stop')}</button>`
+    : `<div class="muted small">${L('硬盘自己检查自己，不会改动资料。', 'The drive tests itself; data is not changed.')}</div>
+       <span class="btns"><button class="st-go" data-what="short" ${st?.ok === false ? 'disabled' : ''}>${L('短测', 'Short')} <small>${mins(st?.shortMin || 2)}</small></button>
+       <button class="st-go" data-what="long" ${st?.ok === false ? 'disabled' : ''}>${L('长测', 'Long')} <small>${mins(st?.longMin)}</small></button></span>`;
+  return `<div class="tool" id="selftest"><h3>SMART ${L('自检', 'self-test')}</h3>${body}<div class="tool-foot">${foot}</div></div>`;
+}
+
+async function refreshSelfTest(d) {
+  const key = diskKey(d);
+  try { selfTests[key] = await window.smartdisk.selfTest(d.index, 'status'); } catch (e) { selfTests[key] = { ok: false, error: String(e) }; }
+  const cur = data.disks[current];
+  if (cur && diskKey(cur) === key) {
+    const el = document.getElementById('selftest');
+    if (el) { el.outerHTML = selfTestCard(cur); bindSelfTest(cur); }
+    const gc = document.querySelector('.grade-card');
+    if (gc) gc.outerHTML = gradeCard(cur, cur.summary);
+  }
+  clearTimeout(selfTestTimer);
+  if (selfTests[key]?.running) selfTestTimer = setTimeout(() => refreshSelfTest(d), 5000);
+}
+
+function bindSelfTest(d) {
+  document.querySelectorAll('#selftest .st-go').forEach(b => b.onclick = async () => {
+    const what = b.dataset.what;
+    if (what === 'long' && !d.nvme && !window.confirm(L('长测可能要几个小时，期间可以正常用电脑，但不要关机。要开始吗？', 'A long test can take hours. You can use the PC, but do not shut it down. Start now?'))) return;
+    b.disabled = true;
+    const r = await window.smartdisk.selfTest(d.index, what);
+    if (!r.ok) { selfTests[diskKey(d)] = { ok: false, error: r.error }; }
+    setTimeout(() => refreshSelfTest(d), 1500);
+  });
+}
+
+// ---- buyback grade + health history ----
+const GRADE_CLS = { A: 'good', B: 'good', C: 'warn', D: 'bad' };
+function gradeCard(d, s) {
+  let g = s.grade || { grade: null, text: '', reasons: [] };
+  const scanBad = tests[diskKey(d)]?.scan?.bad || 0;
+  const stl = selfTests[diskKey(d)]?.last;
+  if (stl && /^(fatal|failed)/.test(stl.result) && g.grade) g = { grade: 'D', text: L('不建议收购：有坏道或故障迹象。', 'Do not buy: bad sectors or signs of failure.'), reasons: [L('SMART 自检失败', 'SMART self-test failed')] };
+  if (scanBad && g.grade) g = { grade: 'D', text: L('不建议收购：有坏道或故障迹象。', 'Do not buy: bad sectors or signs of failure.'), reasons: [L(`坏道扫描发现 ${num(scanBad)} 个坏道`, `${num(scanBad)} bad sectors found by the surface scan`)] };
+  return `<div class="tool grade-card"><h3>${L('收购评级', 'Buyback grade')}</h3>
+    <div class="grade-row"><div class="grade-letter" style="color:${color(GRADE_CLS[g.grade] || 'unknown')}">${g.grade || '–'}</div>
+      <div><div class="grade-text">${esc(g.text)}</div>${g.reasons.length ? `<ul class="reasons small">${g.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</div></div>
+    <div class="muted small">${L('根据通电时间、写入量、健康度和坏道自动评估，仅供参考。', 'Based on power-on hours, data written, health and bad sectors. For reference only.')}</div></div>`;
+}
+
+function historyChart(list) {
+  const pts = (list || []).filter(p => p.h != null);
+  if (pts.length < 2) return `<div class="muted small hist-empty">${L('每次检测和托盘监控都会记一笔，记录多了就会显示健康度和温度的变化。', 'Every check and the tray monitor add a point; the health and temperature trend appears once there are a few.')}</div>`;
+  const W = 600, H = 170, padL = 30, padR = 10, padT = 10, padB = 22;
+  const t0 = Date.parse(pts[0].t), t1 = Date.parse(pts[pts.length - 1].t) || t0 + 1;
+  const x = t => padL + (W - padL - padR) * ((Date.parse(t) - t0) / Math.max(1, t1 - t0));
+  const y = v => padT + (H - padT - padB) * (1 - Math.max(0, Math.min(100, v)) / 100);
+  const line = (key) => pts.filter(p => p[key] != null).map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p[key]).toFixed(1)}`).join('');
+  const grid = [0, 50, 100].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" class="g"/><text x="${padL - 4}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('');
+  const day = t => new Date(t).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' });
+  const dmg = pts.filter((p, i) => i && p.e > pts[i - 1].e).map(p => `<circle cx="${x(p.t)}" cy="${y(p.h)}" r="4" class="dmg"><title>${L('坏道增加', 'New damage')}: ${p.e}</title></circle>`).join('');
+  return `<svg class="hist" viewBox="0 0 ${W} ${H}">${grid}
+      <path d="${line('c')}" class="temp"/><path d="${line('h')}" class="health"/>${dmg}
+      <text x="${padL}" y="${H - 4}">${day(pts[0].t)}</text><text x="${W - padR}" y="${H - 4}" text-anchor="end">${day(pts[pts.length - 1].t)}</text></svg>
+    <div class="legend-row small muted"><i class="lg-h"></i>${L('健康度 %', 'Health %')} <i class="lg-t"></i>${L('温度 °C', 'Temperature °C')} · ${L(`${pts.length} 笔记录`, `${pts.length} points`)}</div>`;
+}
+
+function historyCard(d) {
+  const list = historyData[diskKey(d)] || [];
+  const first = list.find(p => p.h != null), last = list[list.length - 1];
+  const delta = first && last && first !== last ? L(`从 ${first.h}% 到 ${last.h}%（${String(first.t).slice(0, 10)} 起）`, `${first.h}% → ${last.h}% since ${String(first.t).slice(0, 10)}`) : '';
+  return `<div class="tool"><h3>${L('健康记录', 'Health history')} ${delta ? `<small class="muted">${esc(delta)}</small>` : ''}</h3>${historyChart(list)}</div>`;
+}
+
 // ---- rendering ----
 function renderList() {
   $('#diskList').innerHTML = data.disks.map((d, i) => {
@@ -272,6 +362,7 @@ function renderDetail() {
   const scanBad = tests[diskKey(d)]?.scan?.bad;
   if (scanBad) banners.push(`<div class="banner bad">⚠ ${L(`坏道扫描发现 ${num(scanBad)} 个读不到的扇区。请先备份资料，建议更换这块硬盘。`, `The surface scan found ${num(scanBad)} unreadable sectors. Back up the data first; this drive should be replaced.`)}</div>`);
   if (s.firmwareWarning) banners.push(`<div class="banner bad">⚠ ${esc(s.firmwareWarning.text)}</div>`);
+  if (s.refurb?.suspect) banners.push(`<div class="banner warn">⚠ ${L('疑似翻新盘（SMART 可能被清零过）：', 'Possibly refurbished (SMART may have been reset): ')}${esc(s.refurb.reasons.join(L('；', '; ')))}</div>`);
   if (s.link?.note) banners.push(`<div class="banner ${s.link.state === 'warn' ? 'warn' : 'info'}">${s.link.state === 'warn' ? '⚠' : 'ℹ'} ${L('接口：', 'Interface: ')}${esc(s.link.note)}</div>`);
   $('#detail').innerHTML = head + banners.join('') + `
     <section class="hero">
@@ -282,8 +373,12 @@ function renderDetail() {
       <div class="metrics">${metricsFor(d, s)}</div>
     </section>
     <section id="tools" class="tools"></section>
+    <section class="tools tools2">${selfTestCard(d)}${gradeCard(d, s)}</section>
+    <section class="tools tools3">${historyCard(d)}</section>
     ${rawTable(d, s)}`;
   renderTools();
+  bindSelfTest(d);
+  if (!selfTests[diskKey(d)] || !selfTests[diskKey(d)].running) refreshSelfTest(d);
 }
 
 function render() {
@@ -300,7 +395,7 @@ function render() {
 
 async function scan() {
   $('#refresh').disabled = true;
-  try { data = await window.smartdisk.scan(); try { monitorState = await window.smartdisk.monitorState?.(); } catch {} if (current >= data.disks.length || (current === -1 && !data.system)) current = 0; render(); }
+  try { data = await window.smartdisk.scan(); try { monitorState = await window.smartdisk.monitorState?.(); } catch {} try { historyData = (await window.smartdisk.history?.()) || {}; } catch {} if (current >= data.disks.length || (current === -1 && !data.system)) current = 0; render(); }
   finally { $('#refresh').disabled = false; }
 }
 $('#refresh').addEventListener('click', scan);
