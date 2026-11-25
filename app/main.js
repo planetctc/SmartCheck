@@ -40,7 +40,8 @@ function scanDisksOnly() {
     const exe = helperPath();
     const useMock = process.env.SMARTDISK_MOCK === '1' || process.platform !== 'win32' || !fs.existsSync(exe);
     const finish = (raw) => {
-      raw.disks = raw.disks.map(d => ({ ...d, summary: evaluate(d) }));
+      const sysL = String(process.env.SystemDrive || 'C:').slice(0, 1).toUpperCase();
+      raw.disks = raw.disks.map(d => ({ ...d, isSystem: (d.letters || []).some(x => x.toUpperCase().startsWith(sysL)), summary: evaluate(d) }));
       raw.scannedAt = new Date().toISOString();
       raw.mock = useMock;
       raw.computer = { name: os.hostname(), os: (os.version ? os.version() : os.type()) + ' ' + os.release() };
@@ -69,13 +70,25 @@ function startTask(kind, diskIndex, letter) {
   const disk = lastScan?.disks?.find(d => d.index === diskIndex);
   if (!disk) return { ok: false, error: 'nodisk' };
   const key = diskKey(disk);
-  const args = kind === 'bench' ? ['bench', String(letter || '').slice(0, 1), '1024'] : ['scan', String(diskIndex)];
+  const L1 = String(letter || '').slice(0, 1).toUpperCase();
+  if (kind === 'erase') {
+    const sys = String(process.env.SystemDrive || 'C:').slice(0, 1).toUpperCase();
+    if ((disk.letters || []).some(x => x.startsWith(sys))) return { ok: false, error: 'system' };
+  }
+  const args = kind === 'bench' ? ['bench', L1, '1024'] : kind === 'capacity' ? ['capacity', L1]
+    : kind === 'erase' ? ['erase', String(diskIndex), `ERASE-${diskIndex}`, 'auto'] : ['scan', String(diskIndex)];
   const send = (ev) => { if (win && !win.isDestroyed()) win.webContents.send('task:event', { kind, key, ...ev }); };
-  const acc = kind === 'bench' ? { letter, results: {}, startedAt: new Date().toISOString() } : { startedAt: new Date().toISOString() };
+  const acc = kind === 'bench' ? { letter, results: {}, startedAt: new Date().toISOString() } : { letter: L1, startedAt: new Date().toISOString() };
 
   const onEvent = (ev) => {
     if (kind === 'bench') {
       if (ev.type === 'result') acc.results[ev.test] = { mbps: ev.mbps, iops: ev.iops, ok: ev.ok, error: ev.error };
+    } else if (kind === 'capacity' || kind === 'erase') {
+      if (ev.type === 'start') Object.assign(acc, ev, { type: undefined });
+      if (ev.type === 'phase') acc.phase = ev.name;
+      if (ev.type === 'progress') Object.assign(acc, { phase: ev.phase || acc.phase, pct: ev.pct, done: ev.done, mbps: ev.mbps, bad: ev.bad, errors: ev.errors });
+      if (ev.type === 'done') Object.assign(acc, ev, { type: undefined, pct: 100 });
+      if (ev.type === 'error') acc.code = ev.code;
     } else {
       if (ev.type === 'start') { acc.size = ev.size; acc.cells = new Array(ev.cells).fill(-1); }
       if (ev.type === 'progress') {
@@ -93,6 +106,8 @@ function startTask(kind, diskIndex, letter) {
     task = null;
     acc.status = status;   // done | canceled | error
     acc.finishedAt = new Date().toISOString();
+    // A killed capacity check leaves its test files behind: remove them.
+    if (kind === 'capacity' && status !== 'done' && L1) { try { fs.rmSync(`${L1}:\\smartDisk-capacity-test`, { recursive: true, force: true }); } catch {} }
     if (status === 'done' || (kind === 'scan' && acc.pct > 0)) testResults[key] = { ...testResults[key], [kind]: acc };
     send({ type: 'end', status, result: acc });
   };
@@ -426,7 +441,7 @@ ipcMain.handle('app:version', () => app.getVersion());
 ipcMain.handle('settings:get', () => loadSettings());
 ipcMain.handle('settings:save', (_e, v) => { const r = saveSettings({ ...loadSettings(), ...(v || {}) }); refreshTrayMenu(); return r; });
 ipcMain.handle('report:make', (_e, form) => makeReport(form || {}));
-ipcMain.handle('task:start', (_e, a) => startTask(a?.kind === 'bench' ? 'bench' : 'scan', Number(a?.disk), a?.letter));
+ipcMain.handle('task:start', (_e, a) => startTask(['bench', 'capacity', 'erase'].includes(a?.kind) ? a.kind : 'scan', Number(a?.disk), a?.letter));
 ipcMain.handle('task:cancel', () => { if (task) task.cancel(); return true; });
 ipcMain.handle('task:results', () => testResults);
 ipcMain.handle('selftest', (_e, a) => selfTest(Number(a?.disk), ['short', 'long', 'abort'].includes(a?.what) ? a.what : 'status'));

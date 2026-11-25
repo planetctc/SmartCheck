@@ -64,6 +64,20 @@
     </form>
   </dialog>
 
+  <dialog id="eraseDlg" class="form-dlg danger-dlg">
+    <form id="eraseForm" method="dialog">
+      <h2 data-en="Secure erase">安全擦除</h2>
+      <div id="eraseWhat" class="erase-what"></div>
+      <div class="banner bad small" data-en="ALL data on this drive (every partition and file) will be destroyed and cannot be recovered. Use this only before selling or giving away the drive.">这块硬盘上的所有资料（全部分区和文件）都会被彻底清除，无法恢复。只在卖出或送出硬盘前使用。</div>
+      <label class="chk"><input type="checkbox" name="backed"><span data-en="The customer's data is backed up or not needed">客户资料已经备份好，或者不需要了</span></label>
+      <label><span id="eraseTypeLbl"></span><input name="serial" autocomplete="off" spellcheck="false"></label>
+      <div class="row-btns">
+        <button value="cancel" formnovalidate data-en="Cancel">取消</button>
+        <button id="eraseGo" value="ok" class="danger" disabled data-en="Erase">擦除</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="settings" class="form-dlg">
     <form id="setForm" method="dialog">
       <h2 data-en="Settings">设置</h2>

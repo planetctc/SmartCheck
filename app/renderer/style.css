@@ -188,3 +188,16 @@ svg.hist .dmg { fill: var(--bad); }
 .legend-row i.lg-h { background: var(--good); }
 .legend-row i.lg-t { background: var(--warn); }
 .hist-empty { padding: 20px 0; }
+
+/* fake-capacity check + secure erase */
+.cap-res { font-weight: 700; font-size: 15px; }
+.cap-res.ok { color: var(--good); }
+.cap-res.bad { color: var(--bad); }
+.danger-tool { border-color: color-mix(in srgb, var(--bad) 35%, var(--border)); }
+button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
+button.danger:disabled { opacity: .45; }
+.progress.danger i { background: var(--bad); }
+.danger-txt { color: var(--bad) !important; }
+dialog.danger-dlg h2 { color: var(--bad); }
+.erase-what { margin-bottom: 10px; line-height: 1.5; }
+dialog.form-dlg label.chk { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
