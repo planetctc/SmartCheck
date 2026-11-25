@@ -26,6 +26,24 @@ function overall(disks) {
 }
 
 let TESTS = {};
+const GRADE_TEXT = () => ({ A: B('成色很好', 'Like new'), B: B('正常使用痕迹', 'Normal wear'), C: B('用得多或有疑点', 'Heavily used / questionable'), D: B('不建议收购', 'Not recommended') });
+
+// QR code with the key facts as plain text, so any phone camera can read it for warranty checks (no internet needed).
+function qrText(p) {
+  const st = p.settings || {};
+  const lines = [`smartDisk ${L('检测记录', 'inspection')}`, st.shopName || '', `${L('日期', 'Date')}: ${dt(p.scan.scannedAt)}`];
+  if (p.orderNo) lines.push(`${L('单号', 'Ref')}: ${p.orderNo}`);
+  (p.scan.disks || []).forEach((d, i) => lines.push(`${i + 1}. ${d.model || '-'} S/N ${d.serial || '-'} ${d.summary.health != null ? d.summary.health + '%' : '-'}${d.summary.grade?.grade ? ' ' + L('评级', 'Grade') + ' ' + d.summary.grade.grade : ''}`));
+  return lines.filter(Boolean).join('\n').slice(0, 900);
+}
+function qrSvg(text) {
+  try {
+    const q = window.qrcode(0, 'M');
+    q.addData(text, 'Byte');
+    q.make();
+    return q.createSvgTag({ cellSize: 2, margin: 0, scalable: true });
+  } catch { return ''; }
+}
 const fmtMb = v => v == null ? '-' : v >= 100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(v >= 10 ? 1 : 2);
 function dur(sec) { sec = Math.round(sec || 0); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60); return h ? `${h} h ${m} min` : m ? `${m} min` : `${sec} s`; }
 
@@ -42,6 +60,11 @@ function testLines(d) {
       ${r.seqQ1Read ? `1M Q1 ${L('读/写', 'R/W')} <b>${fmtMb(r.seqQ1Read?.mbps)}</b> / <b>${fmtMb(r.seqQ1Write?.mbps)}</b> ·` : ''}
       4K Q32 ${L('读/写', 'R/W')} <b>${fmtMb(r.rnd4kQ32Read?.mbps)}</b> / <b>${fmtMb(r.rnd4kQ32Write?.mbps)}</b> ·
       4K Q1 ${L('读/写', 'R/W')} <b>${fmtMb(r.rnd4kQ1Read?.mbps)}</b> / <b>${fmtMb(r.rnd4kQ1Write?.mbps)}</b> MB/s</div>`);
+  }
+  const stt = t.selftest;
+  if (stt) {
+    const ok = stt.result === 'passed', aborted = stt.result === 'aborted' || stt.result === 'interrupted';
+    out.push(`<div class="test"><span>${B('SMART 自检', 'Self-test')}</span>${stt.type === 'long' ? B('长测', 'Long') : B('短测', 'Short')} · <b class="${ok ? 'ok' : aborted ? 'warn' : 'bad'}">${ok ? B('通过', 'Passed') : aborted ? B('被中断', 'Aborted') : B('失败', 'Failed')}</b>${stt.lba != null ? ` · LBA ${num(stt.lba)}` : ''}</div>`);
   }
   const sc = t.scan;
   if (sc && sc.pct > 0) {
@@ -75,6 +98,12 @@ function diskDetail(d, i) {
     ? (d.bus === 'usb' ? L('USB 硬盘盒不支持读取 SMART，未检测。', 'USB enclosure does not pass SMART through; not checked.') : esc(s.reasons[0] || L('无法读取 SMART', 'SMART could not be read')))
     : s.reasons.map(esc).join(L('；', '; '));
   const alerts = [];
+  const scanBad = TESTS[d.serial || `${d.model}#${d.index}`]?.scan?.bad || 0;
+  const stFail = /^(fatal|failed)/.test(TESTS[d.serial || `${d.model}#${d.index}`]?.selftest?.result || '');
+  const g = scanBad && s.grade?.grade ? { grade: 'D', reasons: [L(`坏道扫描发现 ${num(scanBad)} 个坏道`, `${num(scanBad)} bad sectors found`)] }
+    : stFail && s.grade?.grade ? { grade: 'D', reasons: [L('SMART 自检失败', 'SMART self-test failed')] } : s.grade;
+  if (g?.grade) alerts.push(`<div class="test"><span>${B('收购评级', 'Grade')}</span><b class="grade g${g.grade}">${g.grade}</b> ${esc(GRADE_TEXT()[g.grade])}${g.reasons?.length ? ` <small>(${g.reasons.map(esc).join(L('；', '; '))})</small>` : ''}</div>`);
+  if (s.refurb?.suspect) alerts.push(`<div class="why">⚠ ${B('疑似翻新盘', 'Possibly refurbished')}: ${s.refurb.reasons.map(esc).join(L('；', '; '))}</div>`);
   if (s.firmwareWarning) alerts.push(`<div class="why bad">⚠ ${esc(s.firmwareWarning.text)}</div>`);
   if (s.link?.note) alerts.push(`<div class="why">⚠ ${esc(s.link.note)}</div>`);
   return `<div class="disk">
@@ -154,7 +183,8 @@ window.renderReport = (p) => {
 
     ${p.note ? `<h2>${B('备注', 'Remarks')}</h2><div class="note">${esc(p.note)}</div>` : ''}
 
-    <div class="sign"><div>${B('检测人员签名', 'Technician')}</div><div>${B('客户签名', 'Customer')}</div></div>
+    <div class="sign"><div>${B('检测人员签名', 'Technician')}</div><div>${B('客户签名', 'Customer')}</div>
+      <div class="qr">${qrSvg(qrText(p))}<small>${B('扫码核对', 'Scan to verify')}</small></div></div>
     <div class="foot"><span>smartDisk v${esc(p.version)} · ${L('报告生成', 'Printed')} ${dt(p.printedAt)}${p.scan.mock ? ' · ' + B('演示数据', 'DEMO') : ''}</span>
       <span>© 2026 PLANET COMPUTER TECHNOLOGY CENTRE</span></div>`;
 };

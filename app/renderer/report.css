@@ -35,8 +35,12 @@ td.r, th.r { text-align: right; }
 .note { border: 1px solid #dbe6f2; border-radius: 8px; padding: 8px 10px; min-height: 40px; white-space: pre-wrap; }
 .legend { color: #5d7196; font-size: 10px; margin-top: 6px; }
 
-.sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: auto; padding-top: 28px; }
+.sign { display: grid; grid-template-columns: 1fr 1fr 84px; gap: 40px; margin-top: auto; padding-top: 28px; align-items: end; }
 .sign div { border-top: 1px solid #12307A; padding-top: 4px; color: #5d7196; }
+.sign .qr { border-top: 0; padding: 0; text-align: center; font-size: 8.5px; }
+.sign .qr svg { width: 84px; height: 84px; display: block; }
+.grade { display: inline-block; min-width: 18px; text-align: center; border-radius: 4px; color: #fff; padding: 0 4px; margin-right: 4px; }
+.grade.gA, .grade.gB { background: #17a368; } .grade.gC { background: #d08c00; } .grade.gD { background: #d63a40; }
 .foot { margin-top: 14px; padding-top: 6px; border-top: 1px solid #dbe6f2; font-size: 9.5px; color: #7d8aa5; display: flex; justify-content: space-between; }
 
 table.sys th { width: 120px; background: #f2f7fc; font-size: 11px; }
