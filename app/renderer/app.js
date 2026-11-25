@@ -514,7 +514,7 @@ $('#reportForm').addEventListener('submit', async (e) => {
 });
 
 // ---- settings (shop info + WhatsApp button for customer alerts) ----
-const SET_FIELDS = ['lang', 'shopName', 'shopAddress', 'shopContact', 'whatsapp'];
+const SET_FIELDS = ['lang', 'shopName', 'shopAddress', 'shopContact', 'whatsapp', 'remoteCustomer', 'remoteUrl'];
 function waHint() {
   const f = $('#setForm');
   const on = f.elements.whatsappOn.checked;
@@ -531,8 +531,48 @@ $('#setBtn').addEventListener('click', async () => {
     f.elements.whatsappOn.checked = s.whatsappOn === '1';
   } catch {}
   $('#setMsg').textContent = '';
+  $('#licMsg').textContent = '';
+  f.elements.licKey.value = '';
   waHint();
+  await showLicense();
   $('#settings').showModal();
+});
+
+// ---- licence for the shop's remote service ----
+const LIC_WHY = () => ({ format: L('授权码格式不正确', 'That is not a valid licence key'), signature: L('授权码无效', 'That licence key is not genuine'),
+  product: L('这是 smartAcc 的授权码，不能用在 smartDisk', 'This is a smartAcc key; it does not work for smartDisk'),
+  machine: L('这个授权码是发给另一台电脑的', 'This key was issued for another computer'), expired: L('这个授权码已过期', 'This licence key has expired') });
+async function showLicense() {
+  let st = null;
+  try { st = await window.smartdisk.license(); } catch {}
+  if (!st) { $('#licBox').hidden = true; return; }
+  $('#licMid').textContent = st.machineId || '';
+  $('#licState').innerHTML = st.licensed
+    ? `<span class="ok-txt">✓ ${esc(L('已授权', 'Licensed'))}${st.name ? ' · ' + esc(st.name) : ''}${st.expires ? ' · ' + esc(L('到期 ', 'until ')) + esc(st.expires) : ''}</span>`
+    : `<span class="muted">${esc(L('未授权：不会上传任何资料，客户只会在自己电脑上看到提醒。', 'Not licensed: nothing is sent; the customer only sees alerts on this PC.'))}</span>`;
+  $('#remoteBox').hidden = !st.licensed;
+  $('#remoteUrlLbl').hidden = !!st.builtInUrl;
+  if (st.licensed) $('#licBox').open = true;
+  if (st.last) $('#licMsg').textContent = (st.last.ok ? L('上次上传成功：', 'Last upload OK: ') : L('上次上传失败：', 'Last upload failed: ') + (st.last.error || '') + ' · ') + new Date(st.last.at).toLocaleString();
+}
+$('#licGo').addEventListener('click', async () => {
+  const key = $('#setForm').elements.licKey.value.trim();
+  if (!key) return;
+  const r = await window.smartdisk.setLicense(key);
+  $('#licMsg').textContent = r.ok ? L('授权码已启用。', 'Licence key activated.') : (LIC_WHY()[r.why] || LIC_WHY().format);
+  if (r.ok) { $('#setForm').elements.licKey.value = ''; await showLicense(); }
+});
+$('#remoteTest').addEventListener('click', async () => {
+  const f = $('#setForm');
+  $('#remoteTest').disabled = true;
+  $('#licMsg').textContent = L('正在上传…', 'Sending…');
+  try {
+    await window.smartdisk.saveSettings(Object.fromEntries(SET_FIELDS.map(k => [k, f.elements[k].value.trim()]).concat([['whatsappOn', f.elements.whatsappOn.checked ? '1' : '']])));
+    const r = await window.smartdisk.remoteTest();
+    $('#licMsg').textContent = r.ok ? L('上传成功，店家后台已经看得到这台电脑。', 'Sent. The shop can now see this PC.')
+      : r.skipped ? L('请先填后台地址。', 'Enter the service address first.') : L('上传失败：', 'Upload failed: ') + (r.error || '');
+  } catch (err) { $('#licMsg').textContent = L('上传失败：', 'Upload failed: ') + (err?.message || err); }
+  finally { $('#remoteTest').disabled = false; }
 });
 $('#setForm').addEventListener('input', waHint);
 $('#setForm').addEventListener('submit', async (e) => {

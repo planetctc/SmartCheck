@@ -92,6 +92,20 @@
         <label data-en="WhatsApp number (with country code)">WhatsApp 号码（含国家代码）<input name="whatsapp" maxlength="40" placeholder="例如：+60 12-345 6789" data-en-ph="e.g. +60 12-345 6789"></label>
         <div id="waHint" class="small muted"></div>
       </fieldset>
+      <details id="licBox" class="lic-box">
+        <summary data-en="Remote service (licence)">远程服务（授权）</summary>
+        <div class="small muted" data-en="With a licence key this PC sends its drive status to the shop, and the shop is notified when a drive has a problem.">有授权码的电脑会把硬盘状况传给店家，硬盘出问题时店家会收到通知。</div>
+        <div class="small lic-mid"><span data-en="Computer ID">机器码</span>：<b id="licMid"></b></div>
+        <div id="licState" class="small"></div>
+        <label data-en="Licence key">授权码<textarea name="licKey" rows="2" spellcheck="false" autocomplete="off"></textarea></label>
+        <div class="row-btns"><button type="button" id="licGo" data-en="Activate">启用授权码</button></div>
+        <div id="remoteBox" hidden>
+          <label data-en="Customer (shown to the shop)">客户名称（店家后台显示）<input name="remoteCustomer" maxlength="120" placeholder="例如：陈先生 012-3456789" data-en-ph="e.g. Mr Tan 012-3456789"></label>
+          <label id="remoteUrlLbl" data-en="Service address">后台地址<input name="remoteUrl" maxlength="200" placeholder="https://…workers.dev" spellcheck="false"></label>
+          <div class="row-btns"><button type="button" id="remoteTest" data-en="Send now">立即上传一次</button></div>
+        </div>
+        <div id="licMsg" class="small muted"></div>
+      </details>
       <div class="row-btns">
         <button value="cancel" formnovalidate data-en="Cancel">取消</button>
         <button id="setGo" value="ok" class="primary" data-en="Save">保存</button>
