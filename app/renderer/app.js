@@ -426,7 +426,15 @@ function renderSystem() {
     ${notes.map(n => `<div class="banner warn">⚠ ${esc(n)}</div>`).join('')}
     <div class="raw sys-card"><div class="attr-list">${rows.join('')}</div></div>
     <div class="raw sys-card"><h3 class="sens-h">${L('传感器', 'Sensors')} <small class="muted">${L('读取当下的数值', 'Values at the time of the scan')}</small></h3>
-      ${sensRows.length ? `<div class="attr-list">${sensRows.join('')}</div>` : `<p class="muted small">${L('这台电脑没有可以直接读取的传感器。', 'No sensors could be read on this PC.')}</p>`}</div>`;
+      ${sensRows.length ? `<div class="attr-list">${sensRows.join('')}</div>` : `<p class="muted small">${L('这台电脑没有可以直接读取的传感器。', 'No sensors could be read on this PC.')}</p>`}
+      ${s.canInstallPawnio && !s.pawnio ? `<div class="sens-drv"><span class="muted small">${L('CPU 温度、主板风扇和电压要装 PawnIO 驱动（有数字签名，只装一次）。', 'CPU temperatures, board fans and voltages need the PawnIO driver (signed, installed once).')}</span>
+        <button id="pawnioBtn">${L('安装传感器驱动', 'Install sensor driver')}</button><span id="pawnioMsg" class="small"></span></div>` : ''}</div>`;
+  $('#pawnioBtn')?.addEventListener('click', async () => {
+    $('#pawnioBtn').disabled = true; $('#pawnioMsg').textContent = L('正在下载和安装…', 'Downloading and installing…');
+    const r = await window.smartdisk.installSensors().catch(e => ({ ok: false, error: e.message }));
+    if (r.ok) { $('#pawnioMsg').textContent = r.reboot ? L('装好了，重启电脑后生效。', 'Installed. Restart the PC to use it.') : L('装好了，正在重新检测…', 'Installed. Scanning again…'); if (!r.reboot) scan(); }
+    else { $('#pawnioMsg').textContent = r.canceled ? '' : L('安装失败：', 'Install failed: ') + (r.error || ''); $('#pawnioBtn').disabled = false; }
+  });
 }
 
 function renderDetail() {

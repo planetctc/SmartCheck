@@ -14,7 +14,8 @@ const remote = require('./core/remote');
 const smartacc = require('./core/smartacc');
 const I18N = require('./renderer/i18n');
 const { L } = I18N;
-const { readSystemInfo } = require('./core/sysinfo');
+const { readSystemInfo, mergeSensors } = require('./core/sysinfo');
+const sensors = require('./core/sensors');
 
 let win = null;
 let lastScan = null;
@@ -25,6 +26,11 @@ function helperPath() {
   return path.join(__dirname, '..', 'helper', 'build', 'Release', 'smartdisk-helper.exe');
 }
 
+function sensorsPath() {
+  if (app.isPackaged) return path.join(process.resourcesPath, 'helper', 'sensors', 'smartdisk-sensors.exe');
+  return path.join(__dirname, '..', 'sensors', 'out', 'smartdisk-sensors.exe');
+}
+
 function diskspdPath() {
   if (app.isPackaged) return path.join(process.resourcesPath, 'helper', 'diskspd.exe');
   return path.join(__dirname, '..', 'third_party', 'diskspd', 'diskspd_vs', 'x64', 'Release', 'diskspd.exe');
@@ -32,7 +38,10 @@ function diskspdPath() {
 
 // Single data entry point. The PDF report (and a future Tailscale HTTP endpoint) reuse this.
 async function scanDisks() {
-  const [disks, system] = await Promise.all([scanDisksOnly(), readSystemInfo({ mock: process.env.SMARTDISK_MOCK === '1' })]);
+  const mock = process.env.SMARTDISK_MOCK === '1';
+  const [disks, system, lhm, pawnio] = await Promise.all([scanDisksOnly(), readSystemInfo({ mock }),
+    mock ? null : sensors.read(sensorsPath()), mock ? false : sensors.pawnioInstalled()]);
+  if (system && !system.error) { system.sensors = mergeSensors(system.sensors, lhm); system.pawnio = pawnio; system.canInstallPawnio = process.platform === 'win32' && fs.existsSync(sensorsPath()); }
   disks.system = system;
   lastScan = disks;
   return disks;
@@ -505,6 +514,14 @@ ipcMain.handle('settings:save', (_e, v) => {
   const r = saveSettings({ ...loadSettings(), ...v }); refreshTrayMenu(); return { ...r, smartaccPw: r.smartaccPw ? '1' : '' };
 });
 ipcMain.handle('smartacc:state', () => smartaccState());
+ipcMain.handle('sensors:install', async () => {
+  const r = await dialog.showMessageBox(win, { type: 'question', buttons: [L('安装', 'Install'), L('取消', 'Cancel')], cancelId: 1, title: 'smartDisk',
+    message: L('安装 PawnIO 传感器驱动？', 'Install the PawnIO sensor driver?'),
+    detail: L('读取 CPU 温度、主板风扇和电压需要这个驱动。会从 PawnIO 官方 GitHub 下载有数字签名的安装程序，装好后以后都不用再装。',
+      'Reading CPU temperatures, board fans and voltages needs this driver. The signed installer is downloaded from PawnIO\'s official GitHub; it is installed once.') });
+  if (r.response !== 0) return { ok: false, canceled: true };
+  return sensors.installPawnIO();
+});
 ipcMain.handle('report:make', (_e, form) => makeReport(form || {}));
 ipcMain.handle('task:start', (_e, a) => startTask(['bench', 'capacity', 'erase'].includes(a?.kind) ? a.kind : 'scan', Number(a?.disk), a?.letter));
 ipcMain.handle('task:cancel', () => { if (task) task.cancel(); return true; });

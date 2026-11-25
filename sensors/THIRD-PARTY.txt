@@ -1,0 +1,8 @@
+smartdisk-sensors uses LibreHardwareMonitorLib (https://github.com/LibreHardwareMonitor/LibreHardwareMonitor),
+licensed under the Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/). Its source code is available at the
+address above. Its dependencies (HidSharp, DiskInfoToolkit, RAMSPDToolkit and Microsoft System.* packages) keep
+their own licences, published with each package on nuget.org.
+
+CPU and motherboard sensors use the PawnIO driver (https://pawnio.eu, https://github.com/namazso/PawnIO.Setup).
+smartDisk does not include PawnIO; when the shop chooses to install it, smartDisk downloads the official signed
+installer from GitHub and runs it.

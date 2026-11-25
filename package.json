@@ -10,8 +10,9 @@
     "start:mock": "cross-env SMARTDISK_MOCK=1 electron .",
     "build:helper": "cmake -S helper -B helper/build -A x64 && cmake --build helper/build --config Release",
     "build:diskspd": "powershell -NoProfile -ExecutionPolicy Bypass -File helper/build-diskspd.ps1",
-    "dist": "npm run build:helper && npm run build:diskspd && electron-builder --win nsis --x64 --publish never",
-    "release": "npm run build:helper && npm run build:diskspd && electron-builder --win nsis --x64 --publish always"
+    "dist": "npm run build:helper && npm run build:diskspd && npm run build:sensors && electron-builder --win nsis --x64 --publish never",
+    "release": "npm run build:helper && npm run build:diskspd && npm run build:sensors && electron-builder --win nsis --x64 --publish always",
+    "build:sensors": "powershell -NoProfile -ExecutionPolicy Bypass -File helper/build-sensors.ps1"
   },
   "devDependencies": {
     "cross-env": "7.0.3",
@@ -37,6 +38,19 @@
       {
         "from": "third_party/diskspd/LICENSE",
         "to": "helper/diskspd-LICENSE.txt"
+      },
+      {
+        "from": "sensors/out",
+        "to": "helper/sensors",
+        "filter": [
+          "**/*.exe",
+          "**/*.dll",
+          "**/*.config"
+        ]
+      },
+      {
+        "from": "sensors/THIRD-PARTY.txt",
+        "to": "helper/sensors/THIRD-PARTY.txt"
       }
     ],
     "win": {

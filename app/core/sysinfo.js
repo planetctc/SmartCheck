@@ -121,4 +121,12 @@ function readSystemInfo({ mock } = {}) {
   });
 }
 
-module.exports = { readSystemInfo, sensorsOf, summarize };
+// Combine driverless readings with LibreHardwareMonitor's: LHM wins for GPUs, and real CPU temperatures replace ACPI zones.
+function mergeSensors(base, lhm) {
+  if (!lhm || !lhm.length) return base;
+  const hasGpu = lhm.some(x => x.group === 'gpu'), hasCpuTemp = lhm.some(x => x.group === 'cpu' && x.kind === 'temp');
+  const keepBase = (base || []).filter(x => !(hasGpu && x.group === 'gpu') && !(hasCpuTemp && x.group === 'board' && x.kind === 'temp'));
+  return [...lhm.map(x => ({ ...x, level: sensorLevel(x) })), ...keepBase];
+}
+
+module.exports = { readSystemInfo, sensorsOf, summarize, mergeSensors, sensorLevel };
