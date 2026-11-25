@@ -1,7 +1,7 @@
 {
   "name": "smartdisk",
   "productName": "smartPC",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "smartPC - 电脑健康检测",
   "main": "app/main.js",
   "private": true,
