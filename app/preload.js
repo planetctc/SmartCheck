@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('smartdisk', {
   setLicense: (key) => ipcRenderer.invoke('license:set', key),
   remoteTest: () => ipcRenderer.invoke('remote:test'),
   smartaccState: () => ipcRenderer.invoke('smartacc:state'),
+  installSensors: () => ipcRenderer.invoke('sensors:install'),
   alertData: () => ipcRenderer.invoke('alert:get'),
   alertAction: (a) => ipcRenderer.invoke('alert:action', a),
   onAlert: (fn) => ipcRenderer.on('alert:data', (_e, d) => fn(d)),

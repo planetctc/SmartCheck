@@ -412,14 +412,29 @@ function renderSystem() {
   ];
   if (s.batteryInfo) {
     const w = s.batteryInfo.wear;
-    rows.push(row(L('电池损耗', 'Battery wear'), `${w}% <small class="muted">${L(`（设计 ${num(s.batteryInfo.design)} mWh / 目前满电 ${num(s.batteryInfo.full)} mWh）`, `(design ${num(s.batteryInfo.design)} mWh / full now ${num(s.batteryInfo.full)} mWh)`)}</small>`, w >= 40 ? 'st-bad' : w >= 20 ? 'st-warn' : 'st-ok'));
+    rows.push(row(L('电池损耗', 'Battery wear'), `${w}% <small class="muted">${L(`（设计 ${num(s.batteryInfo.design)} mWh / 目前满电 ${num(s.batteryInfo.full)} mWh）`, `(design ${num(s.batteryInfo.design)} mWh / full now ${num(s.batteryInfo.full)} mWh)`)}${s.batteryInfo.cycles ? L(` · 充电 ${num(s.batteryInfo.cycles)} 次`, ` · ${num(s.batteryInfo.cycles)} cycles`) : ''}</small>`, w >= 40 ? 'st-bad' : w >= 20 ? 'st-warn' : 'st-ok'));
   }
+  const LV = { ok: 'st-ok', warn: 'st-warn', bad: 'st-bad' };
+  const sensRows = (s.sensors || []).map(x => row(esc(x.name) + (x.part ? ` <small class="muted">${esc(x.part)}</small>` : ''),
+    `${esc(Number(x.value).toLocaleString(undefined, { maximumFractionDigits: 1 }))} ${esc(x.unit)}`, x.kind === 'temp' ? LV[x.level] || '' : ''));
   const notes = [];
   if (s.activated === false) notes.push(L('Windows 尚未激活，出机前请激活。', 'Windows is not activated. Activate it before delivery.'));
+  const hot = (s.sensors || []).filter(x => x.level !== 'ok');
+  if (hot.length) notes.push(L('温度偏高：', 'Running hot: ') + hot.map(x => `${x.name} ${x.value}${x.unit}`).join(L('、', ', ')) + L('。请检查散热（风扇、散热膏、灰尘）。', '. Check cooling (fans, thermal paste, dust).'));
   if (s.batteryInfo && s.batteryInfo.wear >= 40) notes.push(L('电池损耗偏高，建议告知客户或更换电池。', 'Battery wear is high. Tell the customer or replace the battery.'));
   $('#detail').innerHTML = `<div class="head"><h1>${L('本机信息', 'This PC')}</h1><div class="meta">${L('出机检测时一起写进 PDF 报告', 'Included in the PDF inspection report')}</div></div>
     ${notes.map(n => `<div class="banner warn">⚠ ${esc(n)}</div>`).join('')}
-    <div class="raw sys-card"><div class="attr-list">${rows.join('')}</div></div>`;
+    <div class="raw sys-card"><div class="attr-list">${rows.join('')}</div></div>
+    <div class="raw sys-card"><h3 class="sens-h">${L('传感器', 'Sensors')} <small class="muted">${L('读取当下的数值', 'Values at the time of the scan')}</small></h3>
+      ${sensRows.length ? `<div class="attr-list">${sensRows.join('')}</div>` : `<p class="muted small">${L('这台电脑没有可以直接读取的传感器。', 'No sensors could be read on this PC.')}</p>`}
+      ${s.canInstallPawnio && !s.pawnio ? `<div class="sens-drv"><span class="muted small">${L('CPU 温度、主板风扇和电压要装 PawnIO 驱动（有数字签名，只装一次）。', 'CPU temperatures, board fans and voltages need the PawnIO driver (signed, installed once).')}</span>
+        <button id="pawnioBtn">${L('安装传感器驱动', 'Install sensor driver')}</button><span id="pawnioMsg" class="small"></span></div>` : ''}</div>`;
+  $('#pawnioBtn')?.addEventListener('click', async () => {
+    $('#pawnioBtn').disabled = true; $('#pawnioMsg').textContent = L('正在下载和安装…', 'Downloading and installing…');
+    const r = await window.smartdisk.installSensors().catch(e => ({ ok: false, error: e.message }));
+    if (r.ok) { $('#pawnioMsg').textContent = r.reboot ? L('装好了，重启电脑后生效。', 'Installed. Restart the PC to use it.') : L('装好了，正在重新检测…', 'Installed. Scanning again…'); if (!r.reboot) scan(); }
+    else { $('#pawnioMsg').textContent = r.canceled ? '' : L('安装失败：', 'Install failed: ') + (r.error || ''); $('#pawnioBtn').disabled = false; }
+  });
 }
 
 function renderDetail() {

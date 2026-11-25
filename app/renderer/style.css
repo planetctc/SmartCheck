@@ -208,3 +208,5 @@ dialog.form-dlg details.lic-box > div { margin-bottom: 8px; }
 .ok-txt { color: var(--good, #1a9f5a); font-weight: 600; }
 dialog.form-dlg { max-height: 92vh; overflow: auto; }
 .warn-txt { color: var(--warn); }
+.sens-h { margin: 0 0 8px; font-size: 14px; } .sys-card + .sys-card { margin-top: 12px; }
+.sens-drv { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
