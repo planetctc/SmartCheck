@@ -131,7 +131,9 @@ function systemSection(sys) {
   const b = sys.board || {};
   if (b.product) rows.push([B('主板', 'Board'), esc(`${b.manufacturer || ''} ${b.product}`) + (b.bios ? `<span class="sub">BIOS ${esc(b.bios)}${b.biosDate ? ' (' + esc(b.biosDate) + ')' : ''}</span>` : '')]);
   const bat = sys.batteryInfo;
-  if (bat) rows.push([B('电池', 'Battery'), `${L('损耗', 'Wear')} ${bat.wear}%<span class="sub">${L(`设计 ${num(bat.design)} mWh · 当前满电 ${num(bat.full)} mWh`, `Design ${num(bat.design)} mWh · full now ${num(bat.full)} mWh`)}</span>`]);
+  if (bat) rows.push([B('电池', 'Battery'), `${L('损耗', 'Wear')} ${bat.wear}%<span class="sub">${L(`设计 ${num(bat.design)} mWh · 当前满电 ${num(bat.full)} mWh`, `Design ${num(bat.design)} mWh · full now ${num(bat.full)} mWh`)}${bat.cycles ? L(` · 充电 ${num(bat.cycles)} 次`, ` · ${num(bat.cycles)} cycles`) : ''}</span>`]);
+  const temps = (sys.sensors || []).filter(x => x.kind === 'temp' || x.kind === 'fan');
+  if (temps.length) rows.push([B('温度 / 风扇', 'Temps / fans'), temps.map(x => `<span class="${x.level === 'ok' ? '' : x.level === 'warn' ? 'warn' : 'bad'}">${esc(x.name)} ${esc(x.value)}${esc(x.unit)}</span>`).join(' · ')]);
   return `<h2>${B('整机信息', 'System')}</h2><table class="sys">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>`;
 }
 
