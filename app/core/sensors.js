@@ -60,7 +60,12 @@ function label(x) {
 }
 
 function toSensors(list) {
-  return (list || []).filter(x => KIND[x.type] && keep(x)).map(x => {
+  list = (list || []).filter(x => KIND[x.type] && keep(x));
+  // A board chip's "CPU" temperature input is often unwired or mis-scaled (an idle i3-12100F showed 99.5 °C on an
+  // MSI B660M). When the CPU itself reports a temperature, trust that and drop the board's guess.
+  if (list.some(x => GROUP[x.hw] === 'cpu' && x.type === 'Temperature'))
+    list = list.filter(x => !(GROUP[x.hw || ''] !== 'cpu' && GROUP[x.hw] !== 'gpu' && x.type === 'Temperature' && /^CPU/i.test(x.name)));
+  return list.map(x => {
     const [kind, unit] = KIND[x.type];
     return { group: GROUP[x.hw] || 'board', part: x.part, name: label(x), kind, value: Math.round(x.value * (kind === 'volt' ? 1000 : 10)) / (kind === 'volt' ? 1000 : 10), unit, src: 'lhm' };
   });

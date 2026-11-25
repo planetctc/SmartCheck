@@ -14,7 +14,8 @@ const remote = require('./core/remote');
 const smartacc = require('./core/smartacc');
 const I18N = require('./renderer/i18n');
 const { L } = I18N;
-const { readSystemInfo, mergeSensors } = require('./core/sysinfo');
+const { readSystemInfo, mergeSensors, sensorLevel } = require('./core/sysinfo');
+const limits = require('./core/limits');
 const sensors = require('./core/sensors');
 
 let win = null;
@@ -39,9 +40,14 @@ function diskspdPath() {
 // Single data entry point. The PDF report (and a future Tailscale HTTP endpoint) reuse this.
 async function scanDisks() {
   const mock = process.env.SMARTDISK_MOCK === '1';
+  const st = loadSettings(), sensOn = limits.featureOn(st, 'sensors'), lim = limits.limitsOf(st);
   const [disks, system, lhm, pawnio] = await Promise.all([scanDisksOnly(), readSystemInfo({ mock }),
-    mock ? null : sensors.read(sensorsPath()), mock ? false : sensors.pawnioInstalled()]);
-  if (system && !system.error) { system.sensors = mergeSensors(system.sensors, lhm); system.pawnio = pawnio; system.canInstallPawnio = process.platform === 'win32' && fs.existsSync(sensorsPath()); }
+    mock || !sensOn ? null : sensors.read(sensorsPath()), mock || !sensOn ? false : sensors.pawnioInstalled()]);
+  if (system && !system.error) {
+    // Sensors turned off in Settings: nothing is read, shown or printed.
+    system.sensors = sensOn ? mergeSensors(system.sensors, lhm).map(x => ({ ...x, level: sensorLevel(x, lim) })) : [];
+    system.pawnio = pawnio; system.canInstallPawnio = sensOn && process.platform === 'win32' && fs.existsSync(sensorsPath());
+  }
   disks.system = system;
   lastScan = disks;
   return disks;
@@ -204,6 +210,7 @@ const DEFAULT_SETTINGS = {
   smartaccUrl: '',      // smartAcc link; empty = this computer (http://localhost:3000)
   smartaccUser: '',
   smartaccPw: '',       // encrypted with Windows DPAPI (safeStorage), never plain text
+  ...limits.defaults(), // f_* feature switches ('1'/'0') and lim_* warning limits, changed in Settings
 };
 const settingsFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'settings.json');
 const oldSettingsFile = () => path.join(app.getPath('userData'), 'settings.json');   // before 0.6.1
@@ -327,7 +334,7 @@ function updateMonitor(scan, notify) {
   if (!scan || scan.mock) return;
   history.record(historyFile(), scan);
   const m = loadMonitor();
-  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan);
+  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan, Date.now(), limits.limitsOf(loadSettings()));
   saveMonitor({ ...m, disks: state.disks });
   if (notify && alerts.length) showAlerts(alerts, scan);
   remoteSend(scan, alerts);
@@ -440,11 +447,12 @@ function alertAction(action) {
 }
 
 async function monitorCheck(manual) {
+  if (loadMonitor().enabled === false) return;   // turned off in Settings
   const scan = await scanDisksOnly();
   if (!scan.disks?.length) return;
   history.record(historyFile(), scan);
   const m = loadMonitor();
-  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan);
+  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan, Date.now(), limits.limitsOf(loadSettings()));
   saveMonitor({ ...m, disks: state.disks });
   remoteSend(scan, alerts);
   if (alerts.length) showAlerts(alerts, scan);
@@ -522,11 +530,18 @@ ipcMain.handle('license:set', (_e, key) => {
 ipcMain.handle('remote:test', async () => remoteSend(lastScan || await scanDisksOnly(), [], true));
 ipcMain.handle('alert:action', (_e, a) => alertAction(String(a)));
 ipcMain.handle('app:version', () => app.getVersion());
-ipcMain.handle('settings:get', () => { const s = loadSettings(); return { ...s, smartaccPw: s.smartaccPw ? '1' : '' }; });
+ipcMain.handle('settings:get', () => { const s = loadSettings(); return { ...s, smartaccPw: s.smartaccPw ? '1' : '', monitorOn: loadMonitor().enabled !== false ? '1' : '' }; });
 ipcMain.handle('settings:save', (_e, v) => {
   v = { ...(v || {}) };
   // The smartAcc password arrives in plain text only when it was typed; store it encrypted, keep the old one otherwise.
   if ('smartaccPw' in v) v.smartaccPw = v.smartaccPw ? encryptPw(v.smartaccPw) : loadSettings().smartaccPw;
+  // Background monitor switch lives in monitor.json (the tray reads it) and the logon task.
+  if ('monitorOn' in v) {
+    const on = v.monitorOn === '1';
+    if (on !== (loadMonitor().enabled !== false)) { saveMonitor({ ...loadMonitor(), enabled: on }); setMonitorTask(on); }
+    if (!on && tray) { tray.destroy(); tray = null; }
+    delete v.monitorOn;
+  }
   const r = saveSettings({ ...loadSettings(), ...v }); refreshTrayMenu(); return { ...r, smartaccPw: r.smartaccPw ? '1' : '' };
 });
 ipcMain.handle('smartacc:state', () => smartaccState());

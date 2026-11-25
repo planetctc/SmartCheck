@@ -209,4 +209,16 @@ dialog.form-dlg details.lic-box > div { margin-bottom: 8px; }
 dialog.form-dlg { max-height: 92vh; overflow: auto; }
 .warn-txt { color: var(--warn); }
 .sens-h { margin: 0 0 8px; font-size: 14px; } .sys-card + .sys-card { margin-top: 12px; }
+.feat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; margin-top: 8px; }
+.lim-grid { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 6px 12px; align-items: center; margin-top: 8px; font-size: 13px; }
+dialog.form-dlg .lim-grid input[type=number] { width: 58px; box-sizing: border-box; padding: 4px 6px; margin: 0; flex: none; }
+.lim-grid > span:nth-child(even) { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.tools2.one { grid-template-columns: 1fr; }
+.sens-list { padding: 0 8px 4px; }
+.sens-part { color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+.sens-part:first-child { margin-top: 0; }
+.sens-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+.sens-item { display: flex; justify-content: space-between; gap: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.sens-item .v { font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 760px) { .sens-grid { grid-template-columns: 1fr; } }
 .sens-drv { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
