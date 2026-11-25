@@ -355,7 +355,7 @@ function renderDetail() {
 
   if (!d.smartOk) {
     $('#detail').innerHTML = head + `<div class="hero"><div class="gauge-card">${gauge(null, 'unknown')}<div class="verdict">${statusText("unknown")}</div></div>
-      <div class="empty">${d.bus === 'usb' ? L('这块硬盘通过 USB 硬盘盒连接，桥接芯片不支持读取 SMART。请把硬盘直接接到主板 SATA / M.2 接口再检测。', 'This drive is in a USB enclosure whose bridge chip does not pass SMART through. Connect it directly to a SATA / M.2 port to check it.') : esc(s.reasons[0])}</div></div>`;
+      <div class="empty">${d.bus === 'usb' ? L(`这块硬盘通过 USB 硬盘盒连接，桥接芯片${d.usbId ? `（${esc(d.usbId)}）` : ''}不支持读取 SMART。请把硬盘直接接到主板 SATA / M.2 接口再检测。`, `This drive is in a USB enclosure whose bridge chip${d.usbId ? ` (${esc(d.usbId)})` : ''} does not pass SMART through. Connect it directly to a SATA / M.2 port to check it.`) : esc(s.reasons[0])}</div></div>`;
     return;
   }
   const banners = [];
