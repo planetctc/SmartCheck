@@ -91,15 +91,15 @@ function metricsFor(d, s) {
   return list.join('');
 }
 
-function rawTable(d, s) {
+function rawTable(d, s, open) {
   if (!s.rows.length) return '';
   const STATE = { ok: L('正常', 'OK'), warn: L('注意', 'Caution'), bad: L('异常', 'Bad') };
   if (d.nvme) {
-    return `<details class="raw"><summary>${L('详细数据（NVMe 健康日志）', 'Details (NVMe health log)')}</summary><div class="attr-list">
+    return `<details class="raw"${open ? ' open' : ''}><summary>${L('详细数据（NVMe 健康日志）', 'Details (NVMe health log)')}</summary><div class="attr-list">
       ${s.rows.map(r => `<div class="attr nv"><span class="n">${esc(r.name)}</span><span class="r st-${r.state}">${esc(r.value)}</span></div>`).join('')}
     </div></details>`;
   }
-  return `<details class="raw"><summary>${L(`详细数据（SMART 属性 ${s.rows.length} 项）`, `Details (${s.rows.length} SMART attributes)`)}</summary><div class="attr-list">
+  return `<details class="raw"${open ? ' open' : ''}><summary>${L(`详细数据（SMART 属性 ${s.rows.length} 项）`, `Details (${s.rows.length} SMART attributes)`)}</summary><div class="attr-list">
     <div class="attr hdr"><span>${L('属性', 'Attribute')}</span><span class="r">${L('原始值', 'Raw')}</span><span class="r">${L('当前', 'Current')}</span><span class="r">${L('阈值', 'Threshold')}</span><span class="r">${L('状态', 'Status')}</span></div>
     ${s.rows.map(r => `<div class="attr"><span class="n">${esc(r.name)}<small>#${r.id}</small></span>
       <span class="r">${esc(r.rawText)}</span><span class="r">${r.current}</span><span class="r">${r.threshold}</span>
@@ -246,10 +246,14 @@ function renderTools() {
   if (!el || current < 0) return;
   const d = data.disks[current];
   const t = tests[diskKey(d)] || {};
-  el.innerHTML = benchCard(d, t) + scanCard(d, t);
+  document.querySelector('.tab[data-tab="tests"]')?.classList.toggle('busy', !!running);   // dot while a test runs
+  el.innerHTML = (on('bench') ? benchCard(d, t) : '') + (on('scan') ? scanCard(d, t) : '');
+  el.hidden = !el.innerHTML;
   const el4 = $('#tools4');
   if (el4) {
-    el4.innerHTML = capacityCard(d, t) + eraseCard(d, t);
+    el4.innerHTML = (on('capacity') ? capacityCard(d, t) : '') + (on('erase') ? eraseCard(d, t) : '');
+    el4.hidden = !el4.innerHTML;
+    el4.classList.toggle('one', on('capacity') !== on('erase'));
     el4.querySelectorAll('button.go').forEach(b => b.onclick = () => startTool(d, b.dataset.kind));
     el4.querySelectorAll('button.cancel').forEach(b => b.onclick = () => window.smartdisk.cancelTask());
     el4.querySelectorAll('button.erase-go').forEach(b => b.onclick = () => openErase(d));
@@ -300,7 +304,7 @@ function selfTestCard(d) {
   const st = selfTests[diskKey(d)];
   let body;
   if (!st) body = `<div class="muted small">${L('读取中…', 'Reading…')}</div>`;
-  else if (!st.ok) body = `<div class="muted small">${L('这块硬盘或 Windows 不支持从这里启动自检。', 'This drive (or Windows) does not let smartDisk start a self-test.')}</div>`;
+  else if (!st.ok) body = `<div class="muted small">${L('这块硬盘或 Windows 不支持从这里启动自检。', 'This drive (or Windows) does not let smartPC start a self-test.')}</div>`;
   else if (st.running) body = `<div class="progress"><i style="width:${st.progress || 0}%"></i></div><div class="small">${L(`自检进行中 ${st.progress || 0}%，可以继续用电脑。`, `Self-test running ${st.progress || 0}%. You can keep using the PC.`)}</div>`;
   else if (st.last) {
     const [t, c] = ST_RESULT()[st.last.result] || ST_RESULT().unknown;
@@ -357,7 +361,8 @@ function gradeCard(d, s) {
 function historyChart(list) {
   const pts = (list || []).filter(p => p.h != null);
   if (pts.length < 2) return `<div class="muted small hist-empty">${L('每次检测和托盘监控都会记一笔，记录多了就会显示健康度和温度的变化。', 'Every check and the tray monitor add a point; the health and temperature trend appears once there are a few.')}</div>`;
-  const W = 600, H = 170, padL = 30, padR = 10, padT = 10, padB = 22;
+  // Wide and short: the card spans the page, so a 600x170 box became ~350 px tall (nick: 不需要那么大).
+  const W = 760, H = 160, padL = 30, padR = 10, padT = 10, padB = 22;
   const t0 = Date.parse(pts[0].t), t1 = Date.parse(pts[pts.length - 1].t) || t0 + 1;
   const x = t => padL + (W - padL - padR) * ((Date.parse(t) - t0) / Math.max(1, t1 - t0));
   const y = v => padT + (H - padT - padB) * (1 - Math.max(0, Math.min(100, v)) / 100);
@@ -415,8 +420,17 @@ function renderSystem() {
     rows.push(row(L('电池损耗', 'Battery wear'), `${w}% <small class="muted">${L(`（设计 ${num(s.batteryInfo.design)} mWh / 目前满电 ${num(s.batteryInfo.full)} mWh）`, `(design ${num(s.batteryInfo.design)} mWh / full now ${num(s.batteryInfo.full)} mWh)`)}${s.batteryInfo.cycles ? L(` · 充电 ${num(s.batteryInfo.cycles)} 次`, ` · ${num(s.batteryInfo.cycles)} cycles`) : ''}</small>`, w >= 40 ? 'st-bad' : w >= 20 ? 'st-warn' : 'st-ok'));
   }
   const LV = { ok: 'st-ok', warn: 'st-warn', bad: 'st-bad' };
-  const sensRows = (s.sensors || []).map(x => row(esc(x.name) + (x.part ? ` <small class="muted">${esc(x.part)}</small>` : ''),
-    `${esc(Number(x.value).toLocaleString(undefined, { maximumFractionDigits: 1 }))} ${esc(x.unit)}`, x.kind === 'temp' ? LV[x.level] || '' : ''));
+  // Sensors grouped by chip (the part name once as a heading), two columns of name / value.
+  const G_ORDER = { cpu: 0, gpu: 1, memory: 2, board: 3 }, K_ORDER = { temp: 0, fan: 1, power: 2, load: 3, volt: 4 };
+  const sens = [...(s.sensors || [])].sort((a, b) => (G_ORDER[a.group] ?? 9) - (G_ORDER[b.group] ?? 9) || String(a.part || '').localeCompare(String(b.part || '')) || (K_ORDER[a.kind] ?? 9) - (K_ORDER[b.kind] ?? 9));
+  const sensGroups = [];
+  for (const x of sens) {
+    const k = x.part || '';
+    if (!sensGroups.length || sensGroups[sensGroups.length - 1].part !== k) sensGroups.push({ part: k, items: [] });
+    sensGroups[sensGroups.length - 1].items.push(x);
+  }
+  const sensRows = sensGroups.map(g => `${g.part ? `<div class="sens-part">${esc(g.part)}</div>` : ''}<div class="sens-grid">${g.items.map(x =>
+    `<div class="sens-item"><span class="n">${esc(x.name)}</span><span class="v ${x.kind === 'temp' ? LV[x.level] || '' : ''}">${esc(Number(x.value).toLocaleString(undefined, { maximumFractionDigits: x.kind === 'volt' ? 3 : 1 }))} ${esc(x.unit)}</span></div>`).join('')}</div>`);
   const notes = [];
   if (s.activated === false) notes.push(L('Windows 尚未激活，出机前请激活。', 'Windows is not activated. Activate it before delivery.'));
   const hot = (s.sensors || []).filter(x => x.level !== 'ok');
@@ -425,10 +439,10 @@ function renderSystem() {
   $('#detail').innerHTML = `<div class="head"><h1>${L('本机信息', 'This PC')}</h1><div class="meta">${L('出机检测时一起写进 PDF 报告', 'Included in the PDF inspection report')}</div></div>
     ${notes.map(n => `<div class="banner warn">⚠ ${esc(n)}</div>`).join('')}
     <div class="raw sys-card"><div class="attr-list">${rows.join('')}</div></div>
-    <div class="raw sys-card"><h3 class="sens-h">${L('传感器', 'Sensors')} <small class="muted">${L('读取当下的数值', 'Values at the time of the scan')}</small></h3>
-      ${sensRows.length ? `<div class="attr-list">${sensRows.join('')}</div>` : `<p class="muted small">${L('这台电脑没有可以直接读取的传感器。', 'No sensors could be read on this PC.')}</p>`}
+    ${on('sensors') ? `<div class="raw sys-card"><h3 class="sens-h">${L('传感器', 'Sensors')} <small class="muted">${L('读取当下的数值', 'Values at the time of the scan')}</small></h3>
+      ${sensRows.length ? `<div class="sens-list">${sensRows.join('')}</div>` : `<p class="muted small">${L('这台电脑没有可以直接读取的传感器。', 'No sensors could be read on this PC.')}</p>`}
       ${s.canInstallPawnio && !s.pawnio ? `<div class="sens-drv"><span class="muted small">${L('CPU 温度、主板风扇和电压要装 PawnIO 驱动（有数字签名，只装一次）。', 'CPU temperatures, board fans and voltages need the PawnIO driver (signed, installed once).')}</span>
-        <button id="pawnioBtn">${L('安装传感器驱动', 'Install sensor driver')}</button><span id="pawnioMsg" class="small"></span></div>` : ''}</div>`;
+        <button id="pawnioBtn">${L('安装传感器驱动', 'Install sensor driver')}</button><span id="pawnioMsg" class="small"></span></div>` : ''}</div>` : ''}`;
   $('#pawnioBtn')?.addEventListener('click', async () => {
     $('#pawnioBtn').disabled = true; $('#pawnioMsg').textContent = L('正在下载和安装…', 'Downloading and installing…');
     const r = await window.smartdisk.installSensors().catch(e => ({ ok: false, error: e.message }));
@@ -458,6 +472,12 @@ function renderDetail() {
   if (s.firmwareWarning) banners.push(`<div class="banner bad">⚠ ${esc(s.firmwareWarning.text)}</div>`);
   if (s.refurb?.suspect) banners.push(`<div class="banner warn">⚠ ${L('疑似翻新盘（SMART 可能被清零过）：', 'Possibly refurbished (SMART may have been reset): ')}${esc(s.refurb.reasons.join(L('；', '; ')))}</div>`);
   if (s.link?.note) banners.push(`<div class="banner ${s.link.state === 'warn' ? 'warn' : 'info'}">${s.link.state === 'warn' ? '⚠' : 'ℹ'} ${L('接口：', 'Interface: ')}${esc(s.link.note)}</div>`);
+  // Three tabs instead of one long page: overview, tests, SMART details.
+  const hasTests = ['bench', 'scan', 'selftest', 'capacity', 'erase'].some(on);
+  const raw = rawTable(d, s, true);
+  const tabs = [['overview', L('概览', 'Overview')], ...(hasTests ? [['tests', L('检测工具', 'Tests')]] : []), ...(raw ? [['smart', L('详细数据', 'SMART details')]] : [])];
+  if (!tabs.some(t => t[0] === detailTab)) detailTab = 'overview';
+  const side = [on('grade') ? gradeCard(d, s) : '', on('history') ? historyCard(d) : ''].filter(Boolean);
   $('#detail').innerHTML = head + banners.join('') + `
     <section class="hero">
       <div class="gauge-card">${gauge(s.health, s.status)}
@@ -466,12 +486,23 @@ function renderDetail() {
       </div>
       <div class="metrics">${metricsFor(d, s)}</div>
     </section>
-    <section id="tools" class="tools"></section>
-    <section class="tools tools2">${selfTestCard(d)}${gradeCard(d, s)}</section>
-    <section class="tools tools3">${historyCard(d)}</section>
-    <section id="tools4" class="tools tools2"></section>
-    ${rawTable(d, s)}`;
+    <nav class="tabs" role="tablist">${tabs.map(([k, t]) => `<button type="button" class="tab${k === detailTab ? ' on' : ''}" data-tab="${k}" role="tab">${t}</button>`).join('')}</nav>
+    <div class="tab-panel" data-panel="overview"${detailTab === 'overview' ? '' : ' hidden'}>
+      ${side.length ? `<section class="tools ${side.length === 2 ? 'tools-gh' : 'tools3'}">${side.join('')}</section>` : `<div class="empty small">${L('评级和健康记录已在设置里关闭。', 'Grade and health history are turned off in Settings.')}</div>`}
+    </div>
+    <div class="tab-panel" data-panel="tests"${detailTab === 'tests' ? '' : ' hidden'}>
+      <section id="tools" class="tools"></section>
+      ${on('selftest') ? `<section class="tools tools3">${selfTestCard(d)}</section>` : ''}
+      <section id="tools4" class="tools tools2"></section>
+    </div>
+    <div class="tab-panel" data-panel="smart"${detailTab === 'smart' ? '' : ' hidden'}>${raw}</div>`;
+  $('#detail').querySelectorAll('.tab').forEach(b => b.onclick = () => {
+    detailTab = b.dataset.tab;
+    $('#detail').querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+    $('#detail').querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== detailTab; });
+  });
   renderTools();
+  if (!on('selftest')) return;
   bindSelfTest(d);
   if (!selfTests[diskKey(d)] || !selfTests[diskKey(d)].running) refreshSelfTest(d);
 }
@@ -479,7 +510,7 @@ function renderDetail() {
 function render() {
   if (!data.disks.length) {
     $('#diskList').innerHTML = '';
-    $('#detail').innerHTML = `<div class="empty">${L('未找到硬盘。', 'No drives found. ')}${data.error ? esc(data.error) : L('请确认以管理员身份运行。', 'Make sure smartDisk runs as administrator.')}</div>`;
+    $('#detail').innerHTML = `<div class="empty">${L('未找到硬盘。', 'No drives found. ')}${data.error ? esc(data.error) : L('请确认以管理员身份运行。', 'Make sure smartPC runs as administrator.')}</div>`;
     return;
   }
   renderList();
@@ -545,7 +576,15 @@ $('#reportForm').addEventListener('submit', async (e) => {
 });
 
 // ---- settings (shop info + WhatsApp button for customer alerts) ----
-const SET_FIELDS = ['lang', 'shopName', 'shopAddress', 'shopContact', 'whatsapp', 'remoteCustomer', 'remoteUrl', 'smartaccUrl', 'smartaccUser'];
+const SET_FIELDS = ['lang', 'shopName', 'shopAddress', 'shopContact', 'whatsapp', 'remoteCustomer', 'remoteUrl', 'smartaccUrl', 'smartaccUser',
+  'lim_drop', 'lim_hdd', 'lim_ssd', 'lim_nvme', 'lim_cpu_w', 'lim_cpu_b', 'lim_gpu_w', 'lim_gpu_b', 'lim_board_w', 'lim_board_b'];
+const FEAT_FIELDS = ['f_bench', 'f_scan', 'f_selftest', 'f_grade', 'f_history', 'f_capacity', 'f_erase', 'f_sensors'];
+const LIM_DEFAULTS = { lim_drop: 2, lim_hdd: 60, lim_ssd: 70, lim_nvme: 80, lim_cpu_w: 85, lim_cpu_b: 95, lim_gpu_w: 83, lim_gpu_b: 90, lim_board_w: 75, lim_board_b: 90 };
+let appSettings = {};
+let detailTab = 'overview';   // which tab of the drive page is open; kept when switching drives
+const on = f => String(appSettings['f_' + f] ?? '1') !== '0';
+// Checkboxes for the f_* switches and the monitor; '0' when unticked so a saved "off" is kept.
+const checkVals = f => Object.fromEntries([...FEAT_FIELDS, 'monitorOn'].map(k => [k, f.elements[k].checked ? '1' : (k === 'monitorOn' ? '' : '0')]));
 function waHint() {
   const f = $('#setForm');
   const on = f.elements.whatsappOn.checked;
@@ -558,8 +597,10 @@ $('#setBtn').addEventListener('click', async () => {
   const f = $('#setForm');
   try {
     const s = await window.smartdisk.settings();
-    for (const k of SET_FIELDS) f.elements[k].value = s[k] || (k === 'lang' ? 'zh' : '');
+    for (const k of SET_FIELDS) f.elements[k].value = s[k] || (k === 'lang' ? 'zh' : LIM_DEFAULTS[k] ?? '');
     f.elements.whatsappOn.checked = s.whatsappOn === '1';
+    for (const k of FEAT_FIELDS) f.elements[k].checked = String(s[k] ?? '1') !== '0';
+    f.elements.monitorOn.checked = s.monitorOn === '1';
   } catch {}
   $('#setMsg').textContent = '';
   $('#licMsg').textContent = '';
@@ -587,7 +628,7 @@ async function showSmartAcc() {
 
 // ---- licence for the shop's remote service ----
 const LIC_WHY = () => ({ format: L('授权码格式不正确', 'That is not a valid licence key'), signature: L('授权码无效', 'That licence key is not genuine'),
-  product: L('这是 smartAcc 的授权码，不能用在 smartDisk', 'This is a smartAcc key; it does not work for smartDisk'),
+  product: L('这是 smartAcc 的授权码，不能用在 smartPC', 'This is a smartAcc key; it does not work for smartPC'),
   machine: L('这个授权码是发给另一台电脑的', 'This key was issued for another computer'), expired: L('这个授权码已过期', 'This licence key has expired') });
 async function showLicense() {
   let st = null;
@@ -614,7 +655,7 @@ $('#remoteTest').addEventListener('click', async () => {
   $('#remoteTest').disabled = true;
   $('#licMsg').textContent = L('正在上传…', 'Sending…');
   try {
-    await window.smartdisk.saveSettings(Object.fromEntries(SET_FIELDS.map(k => [k, f.elements[k].value.trim()]).concat([['whatsappOn', f.elements.whatsappOn.checked ? '1' : '']])));
+    appSettings = await window.smartdisk.saveSettings({ ...Object.fromEntries(SET_FIELDS.map(k => [k, f.elements[k].value.trim()]).concat([['whatsappOn', f.elements.whatsappOn.checked ? '1' : '']])), ...checkVals(f) });
     const r = await window.smartdisk.remoteTest();
     $('#licMsg').textContent = r.ok ? L('上传成功，店家后台已经看得到这台电脑。', 'Sent. The shop can now see this PC.')
       : r.skipped ? L('请先填后台地址。', 'Enter the service address first.') : L('上传失败：', 'Upload failed: ') + (r.error || '');
@@ -622,17 +663,23 @@ $('#remoteTest').addEventListener('click', async () => {
   finally { $('#remoteTest').disabled = false; }
 });
 $('#setForm').addEventListener('input', waHint);
+$('#limReset').addEventListener('click', () => { const f = $('#setForm'); for (const [k, d] of Object.entries(LIM_DEFAULTS)) f.elements[k].value = d; });
 $('#setForm').addEventListener('submit', async (e) => {
   if (e.submitter?.value !== 'ok') return;
   e.preventDefault();
   const f = e.target;
   const v = Object.fromEntries(SET_FIELDS.map(k => [k, f.elements[k].value.trim()]));
   v.whatsappOn = f.elements.whatsappOn.checked ? '1' : '';
+  Object.assign(v, checkVals(f));
   if (f.elements.smartaccPwIn.value) v.smartaccPw = f.elements.smartaccPwIn.value;
   try {
-    await window.smartdisk.saveSettings(v);
+    const before = JSON.stringify([appSettings.f_sensors, ...Object.keys(LIM_DEFAULTS).map(k => appSettings[k])]);
+    appSettings = await window.smartdisk.saveSettings(v);
     $('#settings').close();
+    const rescan = before !== JSON.stringify([appSettings.f_sensors, ...Object.keys(LIM_DEFAULTS).map(k => appSettings[k])]);
     if (v.lang !== window.I18N.getLang()) { window.I18N.setLang(v.lang); applyLang(); scan(); }
+    else if (rescan) scan();   // sensors and temperature colours come from the main process
+    else if (data.disks?.length) render();
   }
   catch (err) { $('#setMsg').textContent = L('保存失败：', 'Save failed: ') + (err?.message || err); }
 });
@@ -643,7 +690,7 @@ $('#aboutBtn').addEventListener('click', async () => {
 });
 // Language first, then the first scan (the main process builds health texts in the same language).
 (async () => {
-  try { window.I18N.setLang((await window.smartdisk.settings()).lang); } catch {}
+  try { appSettings = await window.smartdisk.settings(); window.I18N.setLang(appSettings.lang); } catch {}
   applyLang();
   scan();
 })();

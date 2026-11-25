@@ -1,10 +1,10 @@
 // Background health monitor for customer PCs: compares each scan with the baseline recorded the first time a
-// disk was seen (normally when the shop installed smartDisk) and returns alerts for the customer.
+// disk was seen (normally when the shop installed smartPC) and returns alerts for the customer.
 // Pure logic, no Electron: main.js stores the state in %ProgramData%\smartDisk\monitor.json.
 
 const { L } = require('../renderer/i18n');
 
-const HEALTH_DROP = 2;          // alert when health falls this many points (e.g. 100 -> 98)
+const HEALTH_DROP = 2;          // default: alert when health falls this many points (e.g. 100 -> 98)
 const HOT_REPEAT_MS = 24 * 3600 * 1000;
 const RANK = { good: 0, unknown: 0, warn: 1, bad: 2 };
 
@@ -12,7 +12,7 @@ function diskKey(d) { return d.serial || `${d.model}#${d.index}`; }
 function rawOf(d, id) { return d.ata?.attributes?.find(a => a.id === id)?.raw ?? 0; }
 
 // Hot limits by drive type.
-function hotLimit(d) { return d.bus === 'nvme' ? 80 : d.rpm === 1 ? 70 : 60; }
+function hotLimit(d, lim = {}) { return d.bus === 'nvme' ? lim.nvme ?? 80 : d.rpm === 1 ? lim.ssd ?? 70 : lim.hdd ?? 60; }
 
 // Counters that only go up when the drive is physically failing.
 function damage(d) {
@@ -34,7 +34,9 @@ const DAMAGE_TEXT = () => ({
 
 // state: { disks: { [key]: { model, baseline, ack, hotCount, lastHotAlert } } }
 // Returns { state, alerts: [{ key, model, letters, kind, text }] }.
-function check(state, scan, now = Date.now()) {
+// lim: { drop, hdd, ssd, nvme } from Settings (limits.js); missing values use the defaults.
+function check(state, scan, now = Date.now(), lim = {}) {
+  const minDrop = lim.drop ?? HEALTH_DROP;
   state = state && state.disks ? state : { disks: {} };
   const alerts = [];
   for (const d of scan.disks || []) {
@@ -57,7 +59,7 @@ function check(state, scan, now = Date.now()) {
     // Health drop.
     const drop = (ack.health ?? cur.health) - cur.health;
     const worse = RANK[cur.status] > RANK[ack.status || 'good'];
-    if (drop >= HEALTH_DROP) {   // every 2 points, SSD wear included (nick: 每两趴)
+    if (drop >= minDrop) {   // every 2 points by default, SSD wear included (nick: 每两趴)
       msgs.unshift(L(`健康度从 ${ack.health}% 降到 ${cur.health}%（安装时 ${e.baseline.health}%）`, `Health dropped from ${ack.health}% to ${cur.health}% (${e.baseline.health}% when installed)`));
     } else if (worse) {
       msgs.unshift(L(`硬盘状态变差：${cur.status === 'bad' ? '危险' : '需要注意'}（健康度 ${cur.health}%）`, `Drive condition got worse: ${cur.status === 'bad' ? 'bad' : 'caution'} (health ${cur.health}%)`));
@@ -71,11 +73,12 @@ function check(state, scan, now = Date.now()) {
 
     // Overheating: two checks in a row over the limit, at most once a day.
     const t = d.summary.temperatureC;
-    if (t != null && t >= hotLimit(d)) {
+    const hot = hotLimit(d, lim);
+    if (t != null && t >= hot) {
       e.hotCount = (e.hotCount || 0) + 1;
       if (e.hotCount >= 2 && now - (e.lastHotAlert || 0) > HOT_REPEAT_MS) {
         e.lastHotAlert = now;
-        alerts.push({ ...who, kind: 'hot', severity: 'warn', text: [L(`温度 ${t} °C，超过 ${hotLimit(d)} °C。请检查风扇和通风，避免长时间高温。`, `Temperature ${t} °C, above ${hotLimit(d)} °C. Check the fans and airflow; avoid running this hot for long.`)] });
+        alerts.push({ ...who, kind: 'hot', severity: 'warn', text: [L(`温度 ${t} °C，超过 ${hot} °C。请检查风扇和通风，避免长时间高温。`, `Temperature ${t} °C, above ${hot} °C. Check the fans and airflow; avoid running this hot for long.`)] });
       }
     } else e.hotCount = 0;
     e.model = d.model;

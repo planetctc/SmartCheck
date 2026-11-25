@@ -26,14 +26,15 @@ function overall(disks) {
 }
 
 let TESTS = {};
+let GRADE_ON = true;   // the shop can turn the buyback grade off in Settings
 const GRADE_TEXT = () => ({ A: B('成色很好', 'Like new'), B: B('正常使用痕迹', 'Normal wear'), C: B('用得多或有疑点', 'Heavily used / questionable'), D: B('不建议收购', 'Not recommended') });
 
 // QR code with the key facts as plain text, so any phone camera can read it for warranty checks (no internet needed).
 function qrText(p) {
   const st = p.settings || {};
-  const lines = [`smartDisk ${L('检测记录', 'inspection')}`, st.shopName || '', `${L('日期', 'Date')}: ${dt(p.scan.scannedAt)}`];
+  const lines = [`smartPC ${L('检测记录', 'inspection')}`, st.shopName || '', `${L('日期', 'Date')}: ${dt(p.scan.scannedAt)}`];
   if (p.orderNo) lines.push(`${L('单号', 'Ref')}: ${p.orderNo}`);
-  (p.scan.disks || []).forEach((d, i) => lines.push(`${i + 1}. ${d.model || '-'} S/N ${d.serial || '-'} ${d.summary.health != null ? d.summary.health + '%' : '-'}${d.summary.grade?.grade ? ' ' + L('评级', 'Grade') + ' ' + d.summary.grade.grade : ''}`));
+  (p.scan.disks || []).forEach((d, i) => lines.push(`${i + 1}. ${d.model || '-'} S/N ${d.serial || '-'} ${d.summary.health != null ? d.summary.health + '%' : '-'}${GRADE_ON && d.summary.grade?.grade ? ' ' + L('评级', 'Grade') + ' ' + d.summary.grade.grade : ''}`));
   return lines.filter(Boolean).join('\n').slice(0, 900);
 }
 function qrSvg(text) {
@@ -102,7 +103,7 @@ function diskDetail(d, i) {
   const stFail = /^(fatal|failed)/.test(TESTS[d.serial || `${d.model}#${d.index}`]?.selftest?.result || '');
   const g = scanBad && s.grade?.grade ? { grade: 'D', reasons: [L(`坏道扫描发现 ${num(scanBad)} 个坏道`, `${num(scanBad)} bad sectors found`)] }
     : stFail && s.grade?.grade ? { grade: 'D', reasons: [L('SMART 自检失败', 'SMART self-test failed')] } : s.grade;
-  if (g?.grade) alerts.push(`<div class="test"><span>${B('收购评级', 'Grade')}</span><b class="grade g${g.grade}">${g.grade}</b> ${esc(GRADE_TEXT()[g.grade])}${g.reasons?.length ? ` <small>(${g.reasons.map(esc).join(L('；', '; '))})</small>` : ''}</div>`);
+  if (GRADE_ON && g?.grade) alerts.push(`<div class="test"><span>${B('收购评级', 'Grade')}</span><b class="grade g${g.grade}">${g.grade}</b> ${esc(GRADE_TEXT()[g.grade])}${g.reasons?.length ? ` <small>(${g.reasons.map(esc).join(L('；', '; '))})</small>` : ''}</div>`);
   if (s.refurb?.suspect) alerts.push(`<div class="why">⚠ ${B('疑似翻新盘', 'Possibly refurbished')}: ${s.refurb.reasons.map(esc).join(L('；', '; '))}</div>`);
   if (s.firmwareWarning) alerts.push(`<div class="why bad">⚠ ${esc(s.firmwareWarning.text)}</div>`);
   if (s.link?.note) alerts.push(`<div class="why">⚠ ${esc(s.link.note)}</div>`);
@@ -140,6 +141,7 @@ function systemSection(sys) {
 window.renderReport = (p) => {
   window.I18N.setLang(p.lang);
   TESTS = p.tests || {};
+  GRADE_ON = String(p.settings?.f_grade ?? '1') !== '0';
   const disks = p.scan.disks || [];
   const ov = overall(disks);
   const ovText = {
@@ -152,7 +154,7 @@ window.renderReport = (p) => {
 
   document.getElementById('page').innerHTML = `
     <div class="top">
-      <img src="img/smartDisk_horizontal.svg" alt="smartDisk">
+      <img src="img/smartPC_horizontal.svg" alt="smartPC">
       <div class="shop"><b>${esc(st.shopName)}</b>${esc(st.shopAddress)}<br>${esc(st.shopContact)}</div>
     </div>
 
@@ -187,6 +189,6 @@ window.renderReport = (p) => {
 
     <div class="sign"><div>${B('检测人员签名', 'Technician')}</div><div>${B('客户签名', 'Customer')}</div>
       <div class="qr">${qrSvg(qrText(p))}<small>${B('扫码核对', 'Scan to verify')}</small></div></div>
-    <div class="foot"><span>smartDisk v${esc(p.version)} · ${L('报告生成', 'Printed')} ${dt(p.printedAt)}${p.scan.mock ? ' · ' + B('演示数据', 'DEMO') : ''}</span>
+    <div class="foot"><span>smartPC v${esc(p.version)} · ${L('报告生成', 'Printed')} ${dt(p.printedAt)}${p.scan.mock ? ' · ' + B('演示数据', 'DEMO') : ''}</span>
       <span>© 2026 PLANET COMPUTER TECHNOLOGY CENTRE</span></div>`;
 };

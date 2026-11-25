@@ -177,8 +177,8 @@ dialog.form-dlg input:disabled { opacity: .5; }
 .grade-letter { font-size: 52px; font-weight: 800; line-height: 1; min-width: 44px; text-align: center; }
 .grade-text { font-weight: 600; margin-top: 4px; }
 .grade-card .reasons { margin: 6px 0 0; padding-left: 18px; text-align: left; }
-svg.hist { width: 100%; height: auto; }
-svg.hist text { font-size: 10px; fill: var(--muted); }
+svg.hist { width: 100%; height: auto; max-height: 190px; }
+svg.hist text { font-size: 12px; fill: var(--muted); }
 svg.hist .g { stroke: var(--border); stroke-width: 1; }
 svg.hist path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 svg.hist .health { stroke: var(--good); }
@@ -209,4 +209,41 @@ dialog.form-dlg details.lic-box > div { margin-bottom: 8px; }
 dialog.form-dlg { max-height: 92vh; overflow: auto; }
 .warn-txt { color: var(--warn); }
 .sens-h { margin: 0 0 8px; font-size: 14px; } .sys-card + .sys-card { margin-top: 12px; }
+.feat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; margin-top: 8px; }
+.lim-grid { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 6px 12px; align-items: center; margin-top: 8px; font-size: 13px; }
+dialog.form-dlg .lim-grid input[type=number] { width: 58px; box-sizing: border-box; padding: 4px 6px; margin: 0; flex: none; }
+.lim-grid > span:nth-child(even) { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.tools2.one { grid-template-columns: 1fr; }
+.sens-list { padding: 0 8px 4px; }
+.sens-part { color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+.sens-part:first-child { margin-top: 0; }
+.sens-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
+.sens-item { display: flex; justify-content: space-between; gap: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.sens-item .v { font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 760px) { .sens-grid { grid-template-columns: 1fr; } }
 .sens-drv { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+/* ---------- polish (0.15.0): tabs, softer cards ---------- */
+:root { --shadow: 0 1px 2px rgba(18, 48, 122, .05), 0 6px 18px rgba(18, 48, 122, .05); }
+[data-tone="dark"] { --shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+.gauge-card, .metric, .tool, details.raw, .sys-card, .empty { box-shadow: var(--shadow); }
+.metric { transition: border-color .15s; }
+.metric .k { letter-spacing: .02em; }
+.head h1 { font-size: 24px; letter-spacing: -.01em; }
+.hero { margin: 18px 0 8px; }
+.tabs { display: flex; gap: 4px; margin: 14px 0 16px; border-bottom: 1px solid var(--border); position: sticky; top: -24px; background: var(--bg); z-index: 2; padding-top: 6px; }
+.tab { all: unset; cursor: pointer; padding: 9px 16px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; position: relative; }
+.tab:hover { color: var(--text); }
+.tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.tab.busy::after { content: ''; position: absolute; top: 9px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+.tab-panel > .tools:last-child, .tab-panel > details.raw { margin-bottom: 8px; }
+.tools-gh { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+.tool h3 { display: flex; align-items: baseline; gap: 4px; }
+.tool h3::before { content: ''; width: 3px; height: 14px; border-radius: 2px; background: var(--accent); align-self: center; margin-right: 6px; }
+.danger-tool h3::before { background: var(--bad); }
+.tool-foot button.go, .primary { transition: filter .15s; }
+.tool-foot button.go:hover, .primary:hover { filter: brightness(1.08); }
+@media (max-width: 1100px) { .tools-gh { grid-template-columns: minmax(0, 1fr); } }
+.sys-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 8px 8px; }
+.sys-card .sens-h { padding: 0 8px; }

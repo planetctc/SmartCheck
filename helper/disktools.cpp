@@ -1,10 +1,10 @@
-// smartDisk helper: fake-capacity check and secure erase. Both stream JSON lines like the surface scan.
+// smartPC helper: fake-capacity check and secure erase. Both stream JSON lines like the surface scan.
 //
 //   smartdisk-helper.exe capacity <letter>
 //       Fills the FREE space of the volume with test files (existing files are not touched), reads them back and
 //       checks every byte, then deletes them. Finds fake-capacity USB sticks / SSDs (like H2testw).
 //   smartdisk-helper.exe erase <diskIndex> ERASE-<diskIndex> [auto|zero|nvme]
-//       Destroys ALL data on \\.\PhysicalDriveN. Refuses the Windows system disk and the disk smartDisk runs from.
+//       Destroys ALL data on \\.\PhysicalDriveN. Refuses the Windows system disk and the disk smartPC runs from.
 //       nvme: IOCTL_STORAGE_REINITIALIZE_MEDIA (NVMe Format / sanitize, seconds). zero: overwrite every sector.
 //       auto: nvme for NVMe drives (falls back to zero), zero otherwise.
 
@@ -55,7 +55,7 @@ int runCapacity(int argc, char** argv) {
     if (argc < 3 || !isalpha((unsigned char)argv[2][0])) { emit("{\"type\":\"error\",\"message\":\"usage: capacity <letter>\"}"); return 1; }
     wchar_t L = (wchar_t)toupper((unsigned char)argv[2][0]);
     wchar_t root[] = { L, L':', L'\\', 0 };
-    std::wstring dir = std::wstring(root) + L"smartDisk-capacity-test";
+    std::wstring dir = std::wstring(root) + L"smartPC-capacity-test";
     CreateDirectoryW(dir.c_str(), nullptr);
 
     ULARGE_INTEGER freeBytes{}, totalBytes{};
@@ -152,11 +152,11 @@ int runErase(int argc, char** argv) {
     if (std::string(argv[3]) != "ERASE-" + std::to_string(idx)) { emit("{\"type\":\"error\",\"code\":\"confirm\",\"message\":\"confirmation token does not match\"}"); return 1; }
     std::string method = argc > 4 ? argv[4] : "auto";
 
-    // Never the Windows disk, never the disk smartDisk itself runs from.
+    // Never the Windows disk, never the disk smartPC itself runs from.
     wchar_t sysDir[MAX_PATH]{}, exe[MAX_PATH]{};
     GetSystemDirectoryW(sysDir, MAX_PATH);
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    if (diskOfLetter(sysDir[0]) == idx || diskOfLetter(exe[0]) == idx) { emit("{\"type\":\"error\",\"code\":\"system\",\"message\":\"this is the Windows / smartDisk disk\"}"); return 1; }
+    if (diskOfLetter(sysDir[0]) == idx || diskOfLetter(exe[0]) == idx) { emit("{\"type\":\"error\",\"code\":\"system\",\"message\":\"this is the Windows / smartPC disk\"}"); return 1; }
 
     // Lock and dismount every volume on the disk; keep the handles open until the end.
     std::vector<HANDLE> locks;

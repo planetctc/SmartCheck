@@ -66,7 +66,7 @@ function failText(out) {
 
 function runBench({ exe, letter, logFile, onEvent, onEnd }) {
   const root = `${String(letter).slice(0, 1).toUpperCase()}:\\`;
-  const file = path.join(root, 'smartDisk-bench.tmp');
+  const file = path.join(root, 'smartPC-bench.tmp');
   let child = null, canceled = false, timer = null, wake = null;
   const cleanup = () => { try { fs.unlinkSync(file); } catch {} };
   const sleep = (ms) => new Promise(r => { wake = r; timer = setTimeout(r, ms); });
@@ -86,7 +86,7 @@ function runBench({ exe, letter, logFile, onEvent, onEnd }) {
           return onEnd('error');
         }
       } catch {}
-      if (logFile) try { fs.mkdirSync(path.dirname(logFile), { recursive: true }); fs.writeFileSync(logFile, `smartDisk benchmark log, drive ${root}\n`); } catch {}
+      if (logFile) try { fs.mkdirSync(path.dirname(logFile), { recursive: true }); fs.writeFileSync(logFile, `smartPC benchmark log, drive ${root}\n`); } catch {}
       onEvent({ type: 'start', sizeMiB: 1024, tests: TESTS.length, engine: 'diskspd' });
       onEvent({ type: 'phase', name: 'prepare' });
       let last = 0;

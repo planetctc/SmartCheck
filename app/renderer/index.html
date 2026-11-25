@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
-  <title>smartDisk</title>
+  <title>smartPC</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <aside class="sidebar">
     <div class="brand">
-      <img src="img/smartDisk_horizontal.svg" class="logo logo-light" alt="smartDisk">
-      <img src="img/smartDisk_horizontal_dark.svg" class="logo logo-dark" alt="smartDisk">
+      <img src="img/smartPC_horizontal.svg" class="logo logo-light" alt="smartPC">
+      <img src="img/smartPC_horizontal_dark.svg" class="logo logo-dark" alt="smartPC">
     </div>
     <div class="side-title" data-en="Drives">硬盘</div>
     <nav id="diskList" class="disk-list"></nav>
@@ -38,10 +38,10 @@
   </main>
 
   <dialog id="about">
-    <img src="img/smartDisk_icon.svg" class="about-icon" alt="">
-    <h2>smartDisk <span id="ver" class="muted"></span></h2>
+    <img src="img/smartPC_icon.svg" class="about-icon" alt="">
+    <h2>smartPC <span id="ver" class="muted"></span></h2>
     <p data-en="Disk health tool. Reads SATA SMART data and the NVMe health log.">硬盘健康检测工具，读取 SATA 硬盘 SMART 数据和 NVMe 健康日志。</p>
-    <p class="muted" data-en="smartDisk is developed by PLANET COMPUTER TECHNOLOGY CENTRE.">smartDisk 由 PLANET COMPUTER TECHNOLOGY CENTRE 开发。</p>
+    <p class="muted" data-en="smartPC is developed by PLANET COMPUTER TECHNOLOGY CENTRE.">smartPC 由 PLANET COMPUTER TECHNOLOGY CENTRE 开发。</p>
     <p class="small muted" data-en="Benchmark engine: Microsoft DiskSpd (MIT License). QR codes: qrcode-generator by Kazuhiko Arase (MIT License). Sensors: LibreHardwareMonitorLib (MPL-2.0) and the PawnIO driver.">测速引擎：Microsoft DiskSpd（MIT 授权）。二维码：qrcode-generator，Kazuhiko Arase（MIT 授权）。传感器：LibreHardwareMonitorLib（MPL-2.0 授权）和 PawnIO 驱动。</p>
     <p class="small">© 2026 PLANET COMPUTER TECHNOLOGY CENTRE. This product is the copyright of PLANET COMPUTER TECHNOLOGY CENTRE. All rights reserved.</p>
     <p class="small"><b>PLANET COMPUTER TECHNOLOGY CENTRE</b><br>Batu Gajah, Perak · WhatsApp +60 12-510 5542 · planet@planetctc.com.my</p>
@@ -93,6 +93,35 @@
         <label data-en="WhatsApp number (with country code)">WhatsApp 号码（含国家代码）<input name="whatsapp" maxlength="40" placeholder="例如：+60 12-345 6789" data-en-ph="e.g. +60 12-345 6789"></label>
         <div id="waHint" class="small muted"></div>
       </fieldset>
+      <details id="featBox" class="lic-box">
+        <summary data-en="Features">功能开关</summary>
+        <div class="small muted" data-en="Turned-off features are hidden from the drive pages and the report.">关掉的功能不会显示在硬盘页面和检测报告里。</div>
+        <div class="feat-grid">
+          <label class="check" data-en=" Benchmark"><input type="checkbox" name="f_bench"> 硬盘测速</label>
+          <label class="check" data-en=" Surface scan"><input type="checkbox" name="f_scan"> 坏道扫描</label>
+          <label class="check" data-en=" SMART self-test"><input type="checkbox" name="f_selftest"> SMART 自检</label>
+          <label class="check" data-en=" Buyback grade"><input type="checkbox" name="f_grade"> 收购评级</label>
+          <label class="check" data-en=" Health history"><input type="checkbox" name="f_history"> 健康记录</label>
+          <label class="check" data-en=" Fake-capacity check"><input type="checkbox" name="f_capacity"> 容量真假检测</label>
+          <label class="check" data-en=" Secure erase"><input type="checkbox" name="f_erase"> 安全擦除</label>
+          <label class="check" data-en=" Sensors"><input type="checkbox" name="f_sensors"> 传感器</label>
+          <label class="check" data-en=" Background monitor (tray)"><input type="checkbox" name="monitorOn"> 背景监控（托盘）</label>
+        </div>
+      </details>
+      <details id="limBox" class="lic-box">
+        <summary data-en="Warning limits">警告门槛</summary>
+        <div class="small muted" data-en="When to warn. The customer alerts and the sensor colours on the screen and report follow these numbers.">什么时候警告。客户电脑的硬盘提醒，和画面、报告上传感器的颜色都按这里的数字。</div>
+        <div class="lim-grid">
+          <span data-en="Health drop before alerting the customer">健康度下降多少才提醒客户</span><span><input type="number" name="lim_drop" min="1" max="50"> %</span>
+          <span data-en="Hard disk too hot">机械硬盘过热</span><span><input type="number" name="lim_hdd" min="40" max="90"> °C</span>
+          <span data-en="SATA SSD too hot">SATA 固态过热</span><span><input type="number" name="lim_ssd" min="40" max="100"> °C</span>
+          <span data-en="NVMe SSD too hot">NVMe 固态过热</span><span><input type="number" name="lim_nvme" min="40" max="110"> °C</span>
+          <span data-en="CPU caution / too hot">CPU 偏高 / 过热</span><span><input type="number" name="lim_cpu_w" min="40" max="110"> / <input type="number" name="lim_cpu_b" min="40" max="115"> °C</span>
+          <span data-en="GPU caution / too hot">显卡 偏高 / 过热</span><span><input type="number" name="lim_gpu_w" min="40" max="110"> / <input type="number" name="lim_gpu_b" min="40" max="115"> °C</span>
+          <span data-en="Board, memory caution / too hot">主板、内存 偏高 / 过热</span><span><input type="number" name="lim_board_w" min="30" max="110"> / <input type="number" name="lim_board_b" min="30" max="115"> °C</span>
+        </div>
+        <div class="row-btns" style="justify-content:flex-start"><button type="button" id="limReset" data-en="Restore defaults">恢复默认</button></div>
+      </details>
       <details id="saBox" class="lic-box">
         <summary data-en="smartAcc link">smartAcc 连接</summary>
         <div class="small muted" data-en="Reports are filed in smartAcc under the repair job, buyback or invoice with the same disk serial number.">检测报告会按硬盘序列号，自动存进 smartAcc 里对应的维修单、收购单或发票。</div>

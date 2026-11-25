@@ -1,8 +1,8 @@
 {
   "name": "smartdisk",
-  "productName": "smartDisk",
-  "version": "0.14.0",
-  "description": "smartDisk - 硬盘健康检测",
+  "productName": "smartPC",
+  "version": "0.15.0",
+  "description": "smartPC - 电脑健康检测",
   "main": "app/main.js",
   "private": true,
   "scripts": {
@@ -21,7 +21,8 @@
   },
   "build": {
     "appId": "my.planetcomputer.smartdisk",
-    "productName": "smartDisk",
+    "productName": "smartPC",
+    "executableName": "smartDisk",
     "files": [
       "app/**/*",
       "package.json"
@@ -71,8 +72,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "smartDisk",
-      "artifactName": "smartDisk-Setup-${version}.${ext}",
+      "shortcutName": "smartPC",
+      "artifactName": "smartPC-Setup-${version}.${ext}",
       "include": "build/installer.nsh",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"

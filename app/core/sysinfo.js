@@ -80,9 +80,11 @@ function sensorsOf(s) {
   return out;
 }
 const HOT = { gpu: [83, 90], cpu: [85, 95], board: [75, 90] };
-function sensorLevel(x) {
+// lim (optional): { cpuWarn, cpuBad, gpuWarn, gpuBad, boardWarn, boardBad } from Settings.
+function sensorLevel(x, lim) {
   if (x.kind !== 'temp') return 'ok';
-  const [warn, bad] = HOT[x.group] || HOT.board;
+  const g = HOT[x.group] ? x.group : 'board';
+  const warn = lim?.[g + 'Warn'] ?? HOT[g][0], bad = lim?.[g + 'Bad'] ?? HOT[g][1];
   return x.value >= bad ? 'bad' : x.value >= warn ? 'warn' : 'ok';
 }
 

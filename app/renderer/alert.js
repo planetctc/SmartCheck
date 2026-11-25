@@ -6,8 +6,8 @@ const { L } = window.I18N;
 
 function render(p) {
   window.I18N.setLang(p.lang);
-  document.title = L('smartDisk 硬盘提醒', 'smartDisk drive alert');
-  $('#sub').textContent = L('smartDisk 硬盘监控', 'smartDisk drive monitor');
+  document.title = L('smartPC 硬盘提醒', 'smartPC drive alert');
+  $('#sub').textContent = L('smartPC 硬盘监控', 'smartPC drive monitor');
   $('#tip').innerHTML = L('请先<b>备份重要资料</b>（照片、文件），再联系我们检查。', 'Please <b>back up important files</b> (photos, documents) first, then contact us for a check.');
   $('#wa').textContent = L('WhatsApp 联系我们', 'Contact us on WhatsApp');
   $('#open').textContent = L('查看详情', 'Details');

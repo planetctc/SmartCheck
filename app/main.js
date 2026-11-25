@@ -14,7 +14,11 @@ const remote = require('./core/remote');
 const smartacc = require('./core/smartacc');
 const I18N = require('./renderer/i18n');
 const { L } = I18N;
-const { readSystemInfo, mergeSensors } = require('./core/sysinfo');
+// Renamed from smartDisk to smartPC in 0.15.0. Keep the old user-data folder so the single-instance lock,
+// the remembered skin and old settings carry over (shared data stays in %ProgramData%\smartDisk).
+app.setPath('userData', path.join(app.getPath('appData'), 'smartDisk'));
+const { readSystemInfo, mergeSensors, sensorLevel } = require('./core/sysinfo');
+const limits = require('./core/limits');
 const sensors = require('./core/sensors');
 
 let win = null;
@@ -39,9 +43,14 @@ function diskspdPath() {
 // Single data entry point. The PDF report (and a future Tailscale HTTP endpoint) reuse this.
 async function scanDisks() {
   const mock = process.env.SMARTDISK_MOCK === '1';
+  const st = loadSettings(), sensOn = limits.featureOn(st, 'sensors'), lim = limits.limitsOf(st);
   const [disks, system, lhm, pawnio] = await Promise.all([scanDisksOnly(), readSystemInfo({ mock }),
-    mock ? null : sensors.read(sensorsPath()), mock ? false : sensors.pawnioInstalled()]);
-  if (system && !system.error) { system.sensors = mergeSensors(system.sensors, lhm); system.pawnio = pawnio; system.canInstallPawnio = process.platform === 'win32' && fs.existsSync(sensorsPath()); }
+    mock || !sensOn ? null : sensors.read(sensorsPath()), mock || !sensOn ? false : sensors.pawnioInstalled()]);
+  if (system && !system.error) {
+    // Sensors turned off in Settings: nothing is read, shown or printed.
+    system.sensors = sensOn ? mergeSensors(system.sensors, lhm).map(x => ({ ...x, level: sensorLevel(x, lim) })) : [];
+    system.pawnio = pawnio; system.canInstallPawnio = sensOn && process.platform === 'win32' && fs.existsSync(sensorsPath());
+  }
   disks.system = system;
   lastScan = disks;
   return disks;
@@ -119,7 +128,7 @@ function startTask(kind, diskIndex, letter) {
     acc.status = status;   // done | canceled | error
     acc.finishedAt = new Date().toISOString();
     // A killed capacity check leaves its test files behind: remove them.
-    if (kind === 'capacity' && status !== 'done' && L1) { try { fs.rmSync(`${L1}:\\smartDisk-capacity-test`, { recursive: true, force: true }); } catch {} }
+    if (kind === 'capacity' && status !== 'done' && L1) { try { fs.rmSync(`${L1}:\\smartPC-capacity-test`, { recursive: true, force: true }); } catch {} }
     if (status === 'done' || (kind === 'scan' && acc.pct > 0)) testResults[key] = { ...testResults[key], [kind]: acc };
     send({ type: 'end', status, result: acc });
   };
@@ -190,7 +199,7 @@ async function selfTest(diskIndex, what) {
 
 // ---- settings: shop info for the report and the customer alert ----
 // Stored in %ProgramData%\smartDisk\settings.json so the tray monitor sees them for every Windows user.
-// Other shops using smartDisk put their own name and WhatsApp number here (or turn the button off).
+// Other shops using smartPC put their own name and WhatsApp number here (or turn the button off).
 const DEFAULT_SETTINGS = {
   shopName: 'PLANET COMPUTER TECHNOLOGY CENTRE',
   shopAddress: 'Batu Gajah, Perak',
@@ -204,6 +213,7 @@ const DEFAULT_SETTINGS = {
   smartaccUrl: '',      // smartAcc link; empty = this computer (http://localhost:3000)
   smartaccUser: '',
   smartaccPw: '',       // encrypted with Windows DPAPI (safeStorage), never plain text
+  ...limits.defaults(), // f_* feature switches ('1'/'0') and lim_* warning limits, changed in Settings
 };
 const settingsFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'settings.json');
 const oldSettingsFile = () => path.join(app.getPath('userData'), 'settings.json');   // before 0.6.1
@@ -265,7 +275,7 @@ async function makeReport(form) {
   const safe = (payload.orderNo || stamp).replace(/[\\/:*?"<>|]/g, '_');
   const { canceled, filePath } = await dialog.showSaveDialog(win, {
     title: L('保存检测报告', 'Save inspection report'),
-    defaultPath: path.join(app.getPath('documents'), `smartDisk-${L('检测报告', 'Report')}-${safe}.pdf`),
+    defaultPath: path.join(app.getPath('documents'), `smartPC-${L('检测报告', 'Report')}-${safe}.pdf`),
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   if (canceled || !filePath) return { ok: false, canceled: true };
@@ -294,7 +304,7 @@ function createWindow() {
   if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); return; }
   win = new BrowserWindow({
     width: 1040, height: 700, minWidth: 860, minHeight: 580,
-    title: 'smartDisk',
+    title: 'smartPC',
     icon: path.join(__dirname, 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
@@ -306,7 +316,7 @@ function createWindow() {
 // ---- background monitor (tray) ----
 // Started at logon by a scheduled task ("smartDisk Monitor", runs elevated for any user) with --monitor.
 // Compares each check with the baseline recorded when the disk was first seen and alerts the customer only.
-const MONITOR_TASK = 'smartDisk Monitor';
+const MONITOR_TASK = 'smartDisk Monitor';   // internal name kept from before the rename, so existing tasks are reused
 const CHECK_EVERY_MS = 15 * 60 * 1000;
 const monitorMode = process.argv.includes('--monitor');
 let tray = null;
@@ -327,7 +337,7 @@ function updateMonitor(scan, notify) {
   if (!scan || scan.mock) return;
   history.record(historyFile(), scan);
   const m = loadMonitor();
-  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan);
+  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan, Date.now(), limits.limitsOf(loadSettings()));
   saveMonitor({ ...m, disks: state.disks });
   if (notify && alerts.length) showAlerts(alerts, scan);
   remoteSend(scan, alerts);
@@ -363,7 +373,7 @@ function setMonitorTask(enabled) {
     if (!enabled) return execFile('schtasks.exe', ['/Delete', '/TN', MONITOR_TASK, '/F'], { windowsHide: true }, () => resolve(true));
     const xml = `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Author>PLANET COMPUTER TECHNOLOGY CENTRE</Author><Description>smartDisk 硬盘健康监控</Description></RegistrationInfo>
+  <RegistrationInfo><Author>PLANET COMPUTER TECHNOLOGY CENTRE</Author><Description>smartPC 硬盘健康监控</Description></RegistrationInfo>
   <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>${xmlEsc(taskUser())}</UserId><Delay>PT1M</Delay></LogonTrigger></Triggers>
   <Principals><Principal id="Author"><UserId>${xmlEsc(taskUser())}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
   <Settings>
@@ -398,7 +408,7 @@ function showAlerts(alerts, scan) {
   const first = pendingAlerts[0];
   if (Notification.isSupported()) {
     const n = new Notification({
-      title: L('smartDisk 硬盘提醒', 'smartDisk drive alert'),
+      title: L('smartPC 硬盘提醒', 'smartPC drive alert'),
       body: `${first.model}${first.letters.length ? ' (' + first.letters.join(' ') + ')' : ''}: ${first.text[0]}`,
       icon: path.join(__dirname, 'icon.png'),
     });
@@ -413,7 +423,7 @@ function openAlertWindow() {
   if (alertWin && !alertWin.isDestroyed()) { alertWin.webContents.send('alert:data', alertPayload()); alertWin.show(); alertWin.focus(); return; }
   alertWin = new BrowserWindow({
     width: 480, height: 440, resizable: false, minimizable: false, maximizable: false, alwaysOnTop: true,
-    title: L('smartDisk 硬盘提醒', 'smartDisk drive alert'), icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
+    title: L('smartPC 硬盘提醒', 'smartPC drive alert'), icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   alertWin.loadFile(path.join(__dirname, 'renderer', 'alert.html'));
@@ -429,7 +439,7 @@ function alertAction(action) {
   if (action === 'whatsapp' && whatsappNumber()) {
     const a = pendingAlerts;
     const shop = loadSettings().shopName || '';
-    const lines = [L(`你好${shop ? ' ' + shop : ''}，smartDisk 提醒我的硬盘有问题：`, `Hi${shop ? ' ' + shop : ''}, smartDisk warned me about a problem with my drive:`),
+    const lines = [L(`你好${shop ? ' ' + shop : ''}，smartPC 提醒我的硬盘有问题：`, `Hi${shop ? ' ' + shop : ''}, smartPC warned me about a problem with my drive:`),
       ...a.map(x => `- ${x.model}${x.letters.length ? ' (' + x.letters.join(' ') + ')' : ''}: ${x.text.join(L('；', '; '))}`),
       `${L('电脑', 'PC')}: ${a[0]?.pc || os.hostname()}`];
     shell.openExternal(`https://wa.me/${whatsappNumber()}?text=${encodeURIComponent(lines.join('\n'))}`);
@@ -440,17 +450,18 @@ function alertAction(action) {
 }
 
 async function monitorCheck(manual) {
+  if (loadMonitor().enabled === false) return;   // turned off in Settings
   const scan = await scanDisksOnly();
   if (!scan.disks?.length) return;
   history.record(historyFile(), scan);
   const m = loadMonitor();
-  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan);
+  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan, Date.now(), limits.limitsOf(loadSettings()));
   saveMonitor({ ...m, disks: state.disks });
   remoteSend(scan, alerts);
   if (alerts.length) showAlerts(alerts, scan);
   else if (manual) {
     const worst = scan.disks.filter(d => d.summary?.health != null).map(d => `${d.model}：${d.summary.health}%`).join('\n');
-    dialog.showMessageBox({ type: 'info', title: 'smartDisk', message: L('硬盘状况和安装时一样，没有新问题。', 'No new problems since the drives were first checked.'), detail: worst });
+    dialog.showMessageBox({ type: 'info', title: 'smartPC', message: L('硬盘状况和安装时一样，没有新问题。', 'No new problems since the drives were first checked.'), detail: worst });
   }
   updateTrayTip(scan);
 }
@@ -458,18 +469,18 @@ async function monitorCheck(manual) {
 function updateTrayTip(scan) {
   if (!tray) return;
   const parts = (scan?.disks || []).filter(d => d.summary?.health != null).map(d => `${(d.letters || []).join(' ') || d.model.slice(0, 16)} ${d.summary.health}%`);
-  tray.setToolTip(`${L('smartDisk 硬盘监控', 'smartDisk drive monitor')}\n${parts.join('\n')}`.slice(0, 127));
+  tray.setToolTip(`${L('smartPC 硬盘监控', 'smartPC drive monitor')}\n${parts.join('\n')}`.slice(0, 127));
 }
 
 function refreshTrayMenu() {
   if (!tray) return;
   const menu = Menu.buildFromTemplate([
-    { label: L('打开 smartDisk', 'Open smartDisk'), click: () => createWindow() },
+    { label: L('打开 smartPC', 'Open smartPC'), click: () => createWindow() },
     { label: L('立即检查', 'Check now'), click: () => monitorCheck(true) },
     ...(whatsappNumber() ? [{ label: L('WhatsApp 联系我们', 'Contact us on WhatsApp'), click: () => shell.openExternal(`https://wa.me/${whatsappNumber()}`) }] : []),
     { type: 'separator' },
     { label: L('以目前状态为基准', 'Use current state as baseline'), click: async () => {
-      const r = await dialog.showMessageBox({ type: 'question', buttons: [L('确定', 'OK'), L('取消', 'Cancel')], cancelId: 1, title: 'smartDisk',
+      const r = await dialog.showMessageBox({ type: 'question', buttons: [L('确定', 'OK'), L('取消', 'Cancel')], cancelId: 1, title: 'smartPC',
         message: L('把目前的硬盘状态设为新的基准？', 'Make the current drive state the new baseline?'),
         detail: L('之后只会在比目前更差时才提醒。一般只在换硬盘或维修后使用。', 'Alerts will only come when things get worse than now. Use this after replacing or repairing a drive.') });
       if (r.response !== 0) return;
@@ -478,7 +489,7 @@ function refreshTrayMenu() {
       saveMonitor({ ...m, disks: monitor.rebase(null, scan).disks });
     } },
     { label: L('退出监控', 'Quit monitor'), click: async () => {
-      const r = await dialog.showMessageBox({ type: 'question', buttons: [L('只是这次', 'Just this time'), L('以后都不要监控', 'Turn monitoring off'), L('取消', 'Cancel')], cancelId: 2, title: 'smartDisk',
+      const r = await dialog.showMessageBox({ type: 'question', buttons: [L('只是这次', 'Just this time'), L('以后都不要监控', 'Turn monitoring off'), L('取消', 'Cancel')], cancelId: 2, title: 'smartPC',
         message: L('退出硬盘监控？', 'Quit the drive monitor?'), detail: L('选「只是这次」，下次开机还会自动监控。', 'With "Just this time", monitoring starts again at the next sign-in.') });
       if (r.response === 2) return;
       if (r.response === 1) { saveMonitor({ ...loadMonitor(), enabled: false }); await setMonitorTask(false); }
@@ -492,15 +503,15 @@ function startMonitor(fromApp) {
   if (tray) return;
   const img = nativeImage.createFromPath(path.join(__dirname, 'icon.png')).resize({ width: 16, height: 16 });
   tray = new Tray(img);
-  tray.setToolTip(L('smartDisk 硬盘监控', 'smartDisk drive monitor'));
+  tray.setToolTip(L('smartPC 硬盘监控', 'smartPC drive monitor'));
   refreshTrayMenu();
   tray.on('double-click', () => createWindow());
   tray.on('click', () => createWindow());
   // Closing the main window leaves the monitor running, so say once where it went.
   if (fromApp) {
     try {
-      tray.displayBalloon({ iconType: 'info', title: L('smartDisk 硬盘监控', 'smartDisk drive monitor'),
-        content: L('smartDisk 会在右下角继续监控硬盘，有问题会提醒。右键图标可以退出。', 'smartDisk keeps watching the drives from here and will warn you of problems. Right-click the icon to quit.') });
+      tray.displayBalloon({ iconType: 'info', title: L('smartPC 硬盘监控', 'smartPC drive monitor'),
+        content: L('smartPC 会在右下角继续监控硬盘，有问题会提醒。右键图标可以退出。', 'smartPC keeps watching the drives from here and will warn you of problems. Right-click the icon to quit.') });
     } catch {}
   }
   setTimeout(() => monitorCheck(false), 2 * 60 * 1000);
@@ -522,16 +533,23 @@ ipcMain.handle('license:set', (_e, key) => {
 ipcMain.handle('remote:test', async () => remoteSend(lastScan || await scanDisksOnly(), [], true));
 ipcMain.handle('alert:action', (_e, a) => alertAction(String(a)));
 ipcMain.handle('app:version', () => app.getVersion());
-ipcMain.handle('settings:get', () => { const s = loadSettings(); return { ...s, smartaccPw: s.smartaccPw ? '1' : '' }; });
+ipcMain.handle('settings:get', () => { const s = loadSettings(); return { ...s, smartaccPw: s.smartaccPw ? '1' : '', monitorOn: loadMonitor().enabled !== false ? '1' : '' }; });
 ipcMain.handle('settings:save', (_e, v) => {
   v = { ...(v || {}) };
   // The smartAcc password arrives in plain text only when it was typed; store it encrypted, keep the old one otherwise.
   if ('smartaccPw' in v) v.smartaccPw = v.smartaccPw ? encryptPw(v.smartaccPw) : loadSettings().smartaccPw;
+  // Background monitor switch lives in monitor.json (the tray reads it) and the logon task.
+  if ('monitorOn' in v) {
+    const on = v.monitorOn === '1';
+    if (on !== (loadMonitor().enabled !== false)) { saveMonitor({ ...loadMonitor(), enabled: on }); setMonitorTask(on); }
+    if (!on && tray) { tray.destroy(); tray = null; }
+    delete v.monitorOn;
+  }
   const r = saveSettings({ ...loadSettings(), ...v }); refreshTrayMenu(); return { ...r, smartaccPw: r.smartaccPw ? '1' : '' };
 });
 ipcMain.handle('smartacc:state', () => smartaccState());
 ipcMain.handle('sensors:install', async () => {
-  const r = await dialog.showMessageBox(win, { type: 'question', buttons: [L('安装', 'Install'), L('取消', 'Cancel')], cancelId: 1, title: 'smartDisk',
+  const r = await dialog.showMessageBox(win, { type: 'question', buttons: [L('安装', 'Install'), L('取消', 'Cancel')], cancelId: 1, title: 'smartPC',
     message: L('安装 PawnIO 传感器驱动？', 'Install the PawnIO sensor driver?'),
     detail: L('读取 CPU 温度、主板风扇和电压需要这个驱动。会从 PawnIO 官方 GitHub 下载有数字签名的安装程序，装好后以后都不用再装。',
       'Reading CPU temperatures, board fans and voltages needs this driver. The signed installer is downloaded from PawnIO\'s official GitHub; it is installed once.') });
@@ -547,7 +565,7 @@ ipcMain.handle('update:check', () => checkUpdate(win, true));
 
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
-// Opening smartDisk while the monitor runs just opens the window in the monitor process.
+// Opening smartPC while the monitor runs just opens the window in the monitor process.
 app.on('second-instance', () => createWindow());
 
 app.whenReady().then(() => {
@@ -565,7 +583,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (task) task.cancel();
   if (tray) return;   // the monitor keeps running in the tray
-  // Installed copy: closing the window moves smartDisk to the tray right away instead of waiting for the next logon.
+  // Installed copy: closing the window moves smartPC to the tray right away instead of waiting for the next logon.
   if (app.isPackaged && process.platform === 'win32' && loadMonitor().enabled !== false) return startMonitor(true);
   app.quit();
 });

@@ -1,4 +1,4 @@
-// smartDisk helper: benchmark and read-only surface scan.
+// smartPC helper: benchmark and read-only surface scan.
 // Both stream one JSON object per line on stdout so the app can show progress; the app cancels by killing the process.
 //
 //   smartdisk-helper.exe bench <letter> [sizeMiB]   -> sequential / random read+write speed, using a temp file on that volume
@@ -100,7 +100,7 @@ int runBench(int argc, char** argv) {
         return 1;
     }
 
-    wchar_t path[64]; swprintf_s(path, L"%c:\\smartDisk-bench.tmp", letter);
+    wchar_t path[64]; swprintf_s(path, L"%c:\\smartPC-bench.tmp", letter);
     DeleteFileW(path);   // leftover from a killed run
     HANDLE h = CreateFileW(path, GENERIC_READ | GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
         FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH |
