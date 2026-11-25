@@ -1,6 +1,11 @@
 smartDisk 版本记录 / Version history
 （最新的在最上面 / newest first）
 
+0.10.0  2026-11-25
+  - USB 硬盘盒 / 外接盒也能读 SMART：SATA 硬盘盒（JMicron、ASMedia、Realtek、VIA 等大部分芯片），
+    以及 ASMedia（ASM2362/2364）和 Realtek（RTL9210/9211）芯片的 NVMe 外接盒。会显示里面硬盘的真实型号和序列号。
+  - JMicron NVMe 外接盒（JMS583）暂时还不支持。
+
 0.9.0  2026-11-25
   - 健康记录：每次检测和托盘监控都会记下健康度、温度、坏道数，画成曲线，看得出硬盘是慢慢变差还是突然坏。
   - SMART 自检：硬盘自己做短测（约 2 分钟）或长测，结果和失败位置会显示出来，也写进报告。
