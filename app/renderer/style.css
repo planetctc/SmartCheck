@@ -207,3 +207,4 @@ dialog.form-dlg details.lic-box > div { margin-bottom: 8px; }
 .lic-mid b { font-family: ui-monospace, Consolas, monospace; letter-spacing: .5px; user-select: all; }
 .ok-txt { color: var(--good, #1a9f5a); font-weight: 600; }
 dialog.form-dlg { max-height: 92vh; overflow: auto; }
+.warn-txt { color: var(--warn); }

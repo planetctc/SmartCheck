@@ -482,12 +482,23 @@ $('#refresh').addEventListener('click', scan);
 $('#updBtn').addEventListener('click', () => window.smartdisk.checkUpdate());
 
 // ---- PDF report ----
+function smartaccText(r) {
+  if (r.ok) return r.linked.length
+    ? L('PDF 已保存，也存进了 smartAcc：', 'PDF saved and filed in smartAcc: ') + r.linked.map(x => `${x.no}${x.client ? ' (' + x.client + ')' : ''}`).join(L('、', ', '))
+    : L('PDF 已保存。smartAcc 里没有找到这个序列号的维修单、收购单或发票。', 'PDF saved. smartAcc has no repair, buyback or invoice with this serial number.');
+  const E = { offline: L('连不上 smartAcc', 'smartAcc is not reachable'), login: L('smartAcc 用户名或密码不对（在设置里填）', 'smartAcc username or password is wrong (see Settings)'),
+    '2fa': L('这个 smartAcc 账号开了两步验证，请在设置里换一个没开两步验证的账号', 'This smartAcc account uses 2-step sign-in; use another account in Settings'),
+    old: L('smartAcc 版本太旧，请先更新 smartAcc', 'smartAcc is too old; update it first'), locked: L('另一台电脑上的 smartAcc 需要授权码', 'A smartAcc on another computer needs a licence key') };
+  return L('PDF 已保存，但没有存进 smartAcc：', 'PDF saved, but not filed in smartAcc: ') + (E[r.error] || r.msg || r.error || '');
+}
 $('#reportBtn').addEventListener('click', async () => {
   const f = $('#reportForm');
   try {
     const s = await window.smartdisk.settings();
     f.elements.technician.value = s.technician || '';
   } catch {}
+  $('#saChk').hidden = true;
+  window.smartdisk.smartaccState?.().then(st => { $('#saChk').hidden = !st?.unlocked; }).catch(() => {});
   $('#reportMsg').textContent = '';
   $('#report').showModal();
   f.elements.customer.focus();
@@ -501,12 +512,17 @@ $('#reportForm').addEventListener('submit', async (e) => {
     orderNo: f.elements.orderNo.value.trim(),
     technician: f.elements.technician.value.trim(),
     note: f.elements.note.value.trim(),
+    toSmartAcc: !$('#saChk').hidden && f.elements.toSmartAcc.checked,
   };
   $('#reportGo').disabled = true;
   $('#reportMsg').textContent = L('正在生成…', 'Creating…');
   try {
     const r = await window.smartdisk.makeReport(form);
-    if (r.ok) { $('#report').close(); f.elements.customer.value = ''; f.elements.orderNo.value = ''; f.elements.note.value = ''; }
+    if (r.ok) {
+      f.elements.customer.value = ''; f.elements.orderNo.value = ''; f.elements.note.value = '';
+      if (r.smartacc) $('#reportMsg').textContent = smartaccText(r.smartacc);   // keep the dialog open so the result can be read
+      else $('#report').close();
+    }
     else $('#reportMsg').textContent = r.canceled ? '' : L('生成失败', 'Failed');
   } catch (err) {
     $('#reportMsg').textContent = L('生成失败：', 'Failed: ') + (err?.message || err);
@@ -514,7 +530,7 @@ $('#reportForm').addEventListener('submit', async (e) => {
 });
 
 // ---- settings (shop info + WhatsApp button for customer alerts) ----
-const SET_FIELDS = ['lang', 'shopName', 'shopAddress', 'shopContact', 'whatsapp', 'remoteCustomer', 'remoteUrl'];
+const SET_FIELDS = ['lang', 'shopName', 'shopAddress', 'shopContact', 'whatsapp', 'remoteCustomer', 'remoteUrl', 'smartaccUrl', 'smartaccUser'];
 function waHint() {
   const f = $('#setForm');
   const on = f.elements.whatsappOn.checked;
@@ -533,10 +549,26 @@ $('#setBtn').addEventListener('click', async () => {
   $('#setMsg').textContent = '';
   $('#licMsg').textContent = '';
   f.elements.licKey.value = '';
+  f.elements.smartaccPwIn.value = '';
   waHint();
   await showLicense();
+  showSmartAcc();
   $('#settings').showModal();
 });
+
+// ---- smartAcc link state ----
+async function showSmartAcc() {
+  const f = $('#setForm');
+  try { f.elements.smartaccPwIn.placeholder = (await window.smartdisk.settings()).smartaccPw ? L('已保存（要改才填）', 'Saved (type to change)') : ''; } catch {}
+  $('#saState').textContent = L('正在找 smartAcc…', 'Looking for smartAcc…');
+  let st = null;
+  try { st = await window.smartdisk.smartaccState(); } catch {}
+  if (!st) { $('#saState').textContent = ''; return; }
+  $('#saState').innerHTML = !st.found ? `<span class="muted">${esc(L('没有找到 smartAcc：', 'smartAcc not found at ') + st.url)}</span>`
+    : st.unlocked ? `<span class="ok-txt">✓ ${esc(L('已连上 smartAcc ', 'Connected to smartAcc ') + (st.version || ''))}</span>${st.users ? ' · ' + esc(L('需要填用户名和密码', 'needs a username and password')) : ''}`
+    : `<span class="warn-txt">${esc(L('找到 smartAcc，但它在另一台电脑上，需要授权码才能连接。', 'smartAcc found on another computer; this needs a licence key.'))}</span>`;
+  if (st.found) $('#saBox').open = true;
+}
 
 // ---- licence for the shop's remote service ----
 const LIC_WHY = () => ({ format: L('授权码格式不正确', 'That is not a valid licence key'), signature: L('授权码无效', 'That licence key is not genuine'),
@@ -581,6 +613,7 @@ $('#setForm').addEventListener('submit', async (e) => {
   const f = e.target;
   const v = Object.fromEntries(SET_FIELDS.map(k => [k, f.elements[k].value.trim()]));
   v.whatsappOn = f.elements.whatsappOn.checked ? '1' : '';
+  if (f.elements.smartaccPwIn.value) v.smartaccPw = f.elements.smartaccPwIn.value;
   try {
     await window.smartdisk.saveSettings(v);
     $('#settings').close();
