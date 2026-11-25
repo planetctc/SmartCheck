@@ -4,5 +4,5 @@ address above. Its dependencies (HidSharp, DiskInfoToolkit, RAMSPDToolkit and Mi
 their own licences, published with each package on nuget.org.
 
 CPU and motherboard sensors use the PawnIO driver (https://pawnio.eu, https://github.com/namazso/PawnIO.Setup).
-smartDisk does not include PawnIO; when the shop chooses to install it, smartDisk downloads the official signed
+smartPC does not include PawnIO; when the shop chooses to install it, smartPC downloads the official signed
 installer from GitHub and runs it.

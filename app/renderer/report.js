@@ -32,7 +32,7 @@ const GRADE_TEXT = () => ({ A: B('成色很好', 'Like new'), B: B('正常使用
 // QR code with the key facts as plain text, so any phone camera can read it for warranty checks (no internet needed).
 function qrText(p) {
   const st = p.settings || {};
-  const lines = [`smartDisk ${L('检测记录', 'inspection')}`, st.shopName || '', `${L('日期', 'Date')}: ${dt(p.scan.scannedAt)}`];
+  const lines = [`smartPC ${L('检测记录', 'inspection')}`, st.shopName || '', `${L('日期', 'Date')}: ${dt(p.scan.scannedAt)}`];
   if (p.orderNo) lines.push(`${L('单号', 'Ref')}: ${p.orderNo}`);
   (p.scan.disks || []).forEach((d, i) => lines.push(`${i + 1}. ${d.model || '-'} S/N ${d.serial || '-'} ${d.summary.health != null ? d.summary.health + '%' : '-'}${GRADE_ON && d.summary.grade?.grade ? ' ' + L('评级', 'Grade') + ' ' + d.summary.grade.grade : ''}`));
   return lines.filter(Boolean).join('\n').slice(0, 900);
@@ -154,7 +154,7 @@ window.renderReport = (p) => {
 
   document.getElementById('page').innerHTML = `
     <div class="top">
-      <img src="img/smartDisk_horizontal.svg" alt="smartDisk">
+      <img src="img/smartPC_horizontal.svg" alt="smartPC">
       <div class="shop"><b>${esc(st.shopName)}</b>${esc(st.shopAddress)}<br>${esc(st.shopContact)}</div>
     </div>
 
@@ -189,6 +189,6 @@ window.renderReport = (p) => {
 
     <div class="sign"><div>${B('检测人员签名', 'Technician')}</div><div>${B('客户签名', 'Customer')}</div>
       <div class="qr">${qrSvg(qrText(p))}<small>${B('扫码核对', 'Scan to verify')}</small></div></div>
-    <div class="foot"><span>smartDisk v${esc(p.version)} · ${L('报告生成', 'Printed')} ${dt(p.printedAt)}${p.scan.mock ? ' · ' + B('演示数据', 'DEMO') : ''}</span>
+    <div class="foot"><span>smartPC v${esc(p.version)} · ${L('报告生成', 'Printed')} ${dt(p.printedAt)}${p.scan.mock ? ' · ' + B('演示数据', 'DEMO') : ''}</span>
       <span>© 2026 PLANET COMPUTER TECHNOLOGY CENTRE</span></div>`;
 };

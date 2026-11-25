@@ -4,7 +4,7 @@ name: Deploy remote service (Cloudflare)
 # Repository secrets (Settings > Secrets and variables > Actions), set by the shop owner, never pasted anywhere else:
 #   CLOUDFLARE_API_TOKEN   API token with "Edit Cloudflare Workers" + "D1 Edit" permissions
 #   CLOUDFLARE_ACCOUNT_ID  the account id (Workers & Pages overview page)
-#   DASH_PASSWORD          password for the smartDisk back-office page
+#   DASH_PASSWORD          password for the smartPC back-office page
 #   RESEND_KEY             Resend API key for alert emails (sign up at resend.com with the shop mailbox)
 #   MAIL_TO                optional: where alerts go (default planet@planetctc.com.my)
 #   TG_TOKEN, TG_CHAT      optional: Telegram bot token and chat id

@@ -1,4 +1,4 @@
-// PLANET-only remote alerts: a customer PC with a smartDisk licence key sends its drive status to the shop's
+// PLANET-only remote alerts: a customer PC with a smartPC licence key sends its drive status to the shop's
 // Cloudflare service, which notifies the shop and shows every PC on a password-protected page.
 // Without a key nothing is sent; the customer still gets the alert window on their own PC.
 // Pure Node (no Electron) so it can be tested; main.js passes in the file paths.

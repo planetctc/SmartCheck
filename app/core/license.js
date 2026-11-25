@@ -1,10 +1,10 @@
 // PLANET-only features (remote alerts to the shop, remote view, smartAcc link) need a licence key.
 // Keys are made with the same Ed25519 key pair and make-license.js tool as smartAcc, with "--product smartdisk";
-// only the public key is here, so nobody else can make keys. A smartAcc key (no product tag) does not unlock smartDisk.
+// only the public key is here, so nobody else can make keys. A smartAcc key (no product tag) does not unlock smartPC.
 const crypto = require('crypto'), fs = require('fs'), os = require('os');
 
 const PUB = 'MCowBQYDK2VwAyEAv47aHbwc/+JdfJ3RxL26W0lFlbVQH0odWVzYoe/C7W4=';
-const PRODUCT = 'smartdisk';
+const PRODUCT = 'smartdisk';   // kept after the rename to smartPC, so existing keys and make-license.js --product smartdisk still work
 
 // Same computer ID as smartAcc's license.js, so one ID works for both programs.
 function machineId() {

@@ -304,7 +304,7 @@ function selfTestCard(d) {
   const st = selfTests[diskKey(d)];
   let body;
   if (!st) body = `<div class="muted small">${L('读取中…', 'Reading…')}</div>`;
-  else if (!st.ok) body = `<div class="muted small">${L('这块硬盘或 Windows 不支持从这里启动自检。', 'This drive (or Windows) does not let smartDisk start a self-test.')}</div>`;
+  else if (!st.ok) body = `<div class="muted small">${L('这块硬盘或 Windows 不支持从这里启动自检。', 'This drive (or Windows) does not let smartPC start a self-test.')}</div>`;
   else if (st.running) body = `<div class="progress"><i style="width:${st.progress || 0}%"></i></div><div class="small">${L(`自检进行中 ${st.progress || 0}%，可以继续用电脑。`, `Self-test running ${st.progress || 0}%. You can keep using the PC.`)}</div>`;
   else if (st.last) {
     const [t, c] = ST_RESULT()[st.last.result] || ST_RESULT().unknown;
@@ -510,7 +510,7 @@ function renderDetail() {
 function render() {
   if (!data.disks.length) {
     $('#diskList').innerHTML = '';
-    $('#detail').innerHTML = `<div class="empty">${L('未找到硬盘。', 'No drives found. ')}${data.error ? esc(data.error) : L('请确认以管理员身份运行。', 'Make sure smartDisk runs as administrator.')}</div>`;
+    $('#detail').innerHTML = `<div class="empty">${L('未找到硬盘。', 'No drives found. ')}${data.error ? esc(data.error) : L('请确认以管理员身份运行。', 'Make sure smartPC runs as administrator.')}</div>`;
     return;
   }
   renderList();
@@ -628,7 +628,7 @@ async function showSmartAcc() {
 
 // ---- licence for the shop's remote service ----
 const LIC_WHY = () => ({ format: L('授权码格式不正确', 'That is not a valid licence key'), signature: L('授权码无效', 'That licence key is not genuine'),
-  product: L('这是 smartAcc 的授权码，不能用在 smartDisk', 'This is a smartAcc key; it does not work for smartDisk'),
+  product: L('这是 smartAcc 的授权码，不能用在 smartPC', 'This is a smartAcc key; it does not work for smartPC'),
   machine: L('这个授权码是发给另一台电脑的', 'This key was issued for another computer'), expired: L('这个授权码已过期', 'This licence key has expired') });
 async function showLicense() {
   let st = null;

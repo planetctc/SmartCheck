@@ -24,9 +24,9 @@ function getUpdater(win) {
       if (silent) return;
       try { if (win && !win.isDestroyed()) win.setProgressBar(-1); } catch {}
       const r = await dialog.showMessageBox(win, {
-        type: 'info', buttons: [L('现在重启', 'Restart now'), L('稍后', 'Later')], defaultId: 0, cancelId: 1, title: 'smartDisk',
-        message: L(`smartDisk ${info.version} 已下载好`, `smartDisk ${info.version} is downloaded`),
-        detail: L('重启 smartDisk 就完成更新。\n选「稍后」的话，下次关闭 smartDisk 时会自动更新。', 'Restart smartDisk to finish the update.\nIf you choose Later, it updates the next time smartDisk closes.'),
+        type: 'info', buttons: [L('现在重启', 'Restart now'), L('稍后', 'Later')], defaultId: 0, cancelId: 1, title: 'smartPC',
+        message: L(`smartPC ${info.version} 已下载好`, `smartPC ${info.version} is downloaded`),
+        detail: L('重启 smartPC 就完成更新。\n选「稍后」的话，下次关闭 smartPC 时会自动更新。', 'Restart smartPC to finish the update.\nIf you choose Later, it updates the next time smartPC closes.'),
       });
       if (r.response === 0) setImmediate(() => autoUpdater.quitAndInstall(false, true));
     });
@@ -38,7 +38,7 @@ function getUpdater(win) {
 // manual = true when the user clicked "检查更新" (then also report "latest" / errors).
 async function checkUpdate(win, manual) {
   const u = getUpdater(win);
-  const say = (type, message, detail) => dialog.showMessageBox(win, { type, title: 'smartDisk', message, detail });
+  const say = (type, message, detail) => dialog.showMessageBox(win, { type, title: 'smartPC', message, detail });
   if (!u) { if (manual) say('info', L('网上更新只适用于安装版。', 'Online updates only work in the installed version.')); return { ok: false }; }
   if (busy) { if (manual) say('info', L('正在下载更新。', 'An update is downloading.')); return { ok: true }; }
   try {
@@ -49,8 +49,8 @@ async function checkUpdate(win, manual) {
     if (!manual && info.version === laterVer) return { ok: true };
     const notes = String(info.releaseNotes || '').replace(/<[^>]+>/g, '').trim().slice(0, 800);
     const a = await dialog.showMessageBox(win, {
-      type: 'info', buttons: [L('下载并安装', 'Download and install'), L('以后再说', 'Not now')], defaultId: 0, cancelId: 1, title: 'smartDisk',
-      message: L(`有新版本 smartDisk ${info.version}（目前是 ${app.getVersion()}）`, `smartDisk ${info.version} is available (you have ${app.getVersion()})`), detail: notes,
+      type: 'info', buttons: [L('下载并安装', 'Download and install'), L('以后再说', 'Not now')], defaultId: 0, cancelId: 1, title: 'smartPC',
+      message: L(`有新版本 smartPC ${info.version}（目前是 ${app.getVersion()}）`, `smartPC ${info.version} is available (you have ${app.getVersion()})`), detail: notes,
     });
     if (a.response !== 0) { laterVer = info.version; return { ok: true }; }
     busy = true;
