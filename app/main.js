@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, Notification, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, Notification, nativeImage, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -11,6 +11,7 @@ const monitor = require('./core/monitor');
 const history = require('./core/history');
 const license = require('./core/license');
 const remote = require('./core/remote');
+const smartacc = require('./core/smartacc');
 const I18N = require('./renderer/i18n');
 const { L } = I18N;
 const { readSystemInfo } = require('./core/sysinfo');
@@ -191,6 +192,9 @@ const DEFAULT_SETTINGS = {
   lang: 'zh',
   remoteCustomer: '',   // PLANET remote alerts: whose PC this is, as shown to the shop
   remoteUrl: '',        // the shop's Cloudflare service; empty = use REMOTE_URL
+  smartaccUrl: '',      // smartAcc link; empty = this computer (http://localhost:3000)
+  smartaccUser: '',
+  smartaccPw: '',       // encrypted with Windows DPAPI (safeStorage), never plain text
 };
 const settingsFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'settings.json');
 const oldSettingsFile = () => path.join(app.getPath('userData'), 'settings.json');   // before 0.6.1
@@ -208,11 +212,31 @@ function loadSettings() {
 }
 function saveSettings(s) {
   const clean = {};
-  for (const k of Object.keys(DEFAULT_SETTINGS)) clean[k] = String(s[k] ?? '').slice(0, 200);
+  for (const k of Object.keys(DEFAULT_SETTINGS)) clean[k] = String(s[k] ?? '').slice(0, k === 'smartaccPw' ? 2000 : 200);
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
   fs.writeFileSync(settingsFile(), JSON.stringify(clean, null, 2));
   I18N.setLang(clean.lang);
   return clean;
+}
+
+// ---- smartAcc link: free when smartAcc is on this computer, otherwise PLANET licence only ----
+function encryptPw(pw) {
+  try { if (safeStorage.isEncryptionAvailable()) return 'enc:' + safeStorage.encryptString(pw).toString('base64'); } catch {}
+  return '';
+}
+function decryptPw(v) {
+  try { if (String(v).startsWith('enc:')) return safeStorage.decryptString(Buffer.from(v.slice(4), 'base64')); } catch {}
+  return '';
+}
+function smartaccLogin() {
+  const st = loadSettings();
+  return { url: st.smartaccUrl || smartacc.DEFAULT_URL, username: st.smartaccUser, password: decryptPw(st.smartaccPw) };
+}
+async function smartaccState() {
+  const { url } = smartaccLogin();
+  const h = await smartacc.detect(url);
+  const licensed = license.status(licenseFile()).licensed;
+  return { url, found: h.ok, version: h.version, users: h.users || 0, local: smartacc.isLocal(url), licensed, unlocked: h.ok && (smartacc.isLocal(url) || licensed) };
 }
 
 // ---- PDF report ----
@@ -247,7 +271,14 @@ async function makeReport(form) {
     pdfWin.destroy();
   }
   shell.openPath(filePath);
-  return { ok: true, filePath };
+  let sa = null;
+  if (form.toSmartAcc) {
+    const serials = (scan.disks || []).map(d => d.serial).filter(Boolean);
+    sa = (await smartaccState()).unlocked
+      ? await smartacc.sendReport({ ...smartaccLogin(), pdf: fs.readFileSync(filePath), name: path.basename(filePath), serials }).catch(e => ({ ok: false, error: 'server', msg: e.message }))
+      : { ok: false, error: 'locked' };
+  }
+  return { ok: true, filePath, smartacc: sa };
 }
 
 function createWindow() {
@@ -466,8 +497,14 @@ ipcMain.handle('license:set', (_e, key) => {
 ipcMain.handle('remote:test', async () => remoteSend(lastScan || await scanDisksOnly(), [], true));
 ipcMain.handle('alert:action', (_e, a) => alertAction(String(a)));
 ipcMain.handle('app:version', () => app.getVersion());
-ipcMain.handle('settings:get', () => loadSettings());
-ipcMain.handle('settings:save', (_e, v) => { const r = saveSettings({ ...loadSettings(), ...(v || {}) }); refreshTrayMenu(); return r; });
+ipcMain.handle('settings:get', () => { const s = loadSettings(); return { ...s, smartaccPw: s.smartaccPw ? '1' : '' }; });
+ipcMain.handle('settings:save', (_e, v) => {
+  v = { ...(v || {}) };
+  // The smartAcc password arrives in plain text only when it was typed; store it encrypted, keep the old one otherwise.
+  if ('smartaccPw' in v) v.smartaccPw = v.smartaccPw ? encryptPw(v.smartaccPw) : loadSettings().smartaccPw;
+  const r = saveSettings({ ...loadSettings(), ...v }); refreshTrayMenu(); return { ...r, smartaccPw: r.smartaccPw ? '1' : '' };
+});
+ipcMain.handle('smartacc:state', () => smartaccState());
 ipcMain.handle('report:make', (_e, form) => makeReport(form || {}));
 ipcMain.handle('task:start', (_e, a) => startTask(['bench', 'capacity', 'erase'].includes(a?.kind) ? a.kind : 'scan', Number(a?.disk), a?.letter));
 ipcMain.handle('task:cancel', () => { if (task) task.cancel(); return true; });

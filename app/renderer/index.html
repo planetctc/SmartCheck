@@ -55,6 +55,7 @@
       <label data-en="Ref no. (invoice / order)">单号（发票 / 订单）<input name="orderNo" maxlength="60" placeholder="例如：INV-2026-0123" data-en-ph="e.g. INV-2026-0123"></label>
       <label data-en="Technician">检测人员<input name="technician" maxlength="60"></label>
       <label data-en="Remarks">备注<textarea name="note" rows="3" maxlength="1000" placeholder="例如：出机检测 / 保修 1 年" data-en-ph="e.g. Pre-delivery check / 1-year warranty"></textarea></label>
+      <label class="chk" id="saChk" hidden><input type="checkbox" name="toSmartAcc" checked><span data-en="Also file it in smartAcc (by serial number)">同时存进 smartAcc（按序列号找维修单、收购单、发票）</span></label>
       <div class="small muted" data-en="Shop name and contact are in Settings (bottom left).">店名和联系方式在左下角「设置」里修改。</div>
       <div class="row-btns">
         <button value="cancel" formnovalidate data-en="Cancel">取消</button>
@@ -92,6 +93,14 @@
         <label data-en="WhatsApp number (with country code)">WhatsApp 号码（含国家代码）<input name="whatsapp" maxlength="40" placeholder="例如：+60 12-345 6789" data-en-ph="e.g. +60 12-345 6789"></label>
         <div id="waHint" class="small muted"></div>
       </fieldset>
+      <details id="saBox" class="lic-box">
+        <summary data-en="smartAcc link">smartAcc 连接</summary>
+        <div class="small muted" data-en="Reports are filed in smartAcc under the repair job, buyback or invoice with the same disk serial number.">检测报告会按硬盘序列号，自动存进 smartAcc 里对应的维修单、收购单或发票。</div>
+        <div id="saState" class="small"></div>
+        <label data-en="smartAcc address (empty = this computer)">smartAcc 地址（留空 = 这台电脑）<input name="smartaccUrl" maxlength="200" placeholder="http://localhost:3000" spellcheck="false"></label>
+        <label data-en="smartAcc username">smartAcc 用户名<input name="smartaccUser" maxlength="60" autocomplete="off"></label>
+        <label data-en="smartAcc password">smartAcc 密码<input name="smartaccPwIn" type="password" maxlength="200" autocomplete="new-password"></label>
+      </details>
       <details id="licBox" class="lic-box">
         <summary data-en="Remote service (licence)">远程服务（授权）</summary>
         <div class="small muted" data-en="With a licence key this PC sends its drive status to the shop, and the shop is notified when a drive has a problem.">有授权码的电脑会把硬盘状况传给店家，硬盘出问题时店家会收到通知。</div>

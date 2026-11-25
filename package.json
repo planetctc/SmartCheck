@@ -1,7 +1,7 @@
 {
   "name": "smartdisk",
   "productName": "smartDisk",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "smartDisk - 硬盘健康检测",
   "main": "app/main.js",
   "private": true,
