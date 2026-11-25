@@ -91,15 +91,15 @@ function metricsFor(d, s) {
   return list.join('');
 }
 
-function rawTable(d, s) {
+function rawTable(d, s, open) {
   if (!s.rows.length) return '';
   const STATE = { ok: L('正常', 'OK'), warn: L('注意', 'Caution'), bad: L('异常', 'Bad') };
   if (d.nvme) {
-    return `<details class="raw"><summary>${L('详细数据（NVMe 健康日志）', 'Details (NVMe health log)')}</summary><div class="attr-list">
+    return `<details class="raw"${open ? ' open' : ''}><summary>${L('详细数据（NVMe 健康日志）', 'Details (NVMe health log)')}</summary><div class="attr-list">
       ${s.rows.map(r => `<div class="attr nv"><span class="n">${esc(r.name)}</span><span class="r st-${r.state}">${esc(r.value)}</span></div>`).join('')}
     </div></details>`;
   }
-  return `<details class="raw"><summary>${L(`详细数据（SMART 属性 ${s.rows.length} 项）`, `Details (${s.rows.length} SMART attributes)`)}</summary><div class="attr-list">
+  return `<details class="raw"${open ? ' open' : ''}><summary>${L(`详细数据（SMART 属性 ${s.rows.length} 项）`, `Details (${s.rows.length} SMART attributes)`)}</summary><div class="attr-list">
     <div class="attr hdr"><span>${L('属性', 'Attribute')}</span><span class="r">${L('原始值', 'Raw')}</span><span class="r">${L('当前', 'Current')}</span><span class="r">${L('阈值', 'Threshold')}</span><span class="r">${L('状态', 'Status')}</span></div>
     ${s.rows.map(r => `<div class="attr"><span class="n">${esc(r.name)}<small>#${r.id}</small></span>
       <span class="r">${esc(r.rawText)}</span><span class="r">${r.current}</span><span class="r">${r.threshold}</span>
@@ -246,6 +246,7 @@ function renderTools() {
   if (!el || current < 0) return;
   const d = data.disks[current];
   const t = tests[diskKey(d)] || {};
+  document.querySelector('.tab[data-tab="tests"]')?.classList.toggle('busy', !!running);   // dot while a test runs
   el.innerHTML = (on('bench') ? benchCard(d, t) : '') + (on('scan') ? scanCard(d, t) : '');
   el.hidden = !el.innerHTML;
   const el4 = $('#tools4');
@@ -360,7 +361,8 @@ function gradeCard(d, s) {
 function historyChart(list) {
   const pts = (list || []).filter(p => p.h != null);
   if (pts.length < 2) return `<div class="muted small hist-empty">${L('每次检测和托盘监控都会记一笔，记录多了就会显示健康度和温度的变化。', 'Every check and the tray monitor add a point; the health and temperature trend appears once there are a few.')}</div>`;
-  const W = 600, H = 170, padL = 30, padR = 10, padT = 10, padB = 22;
+  // Wide and short: the card spans the page, so a 600x170 box became ~350 px tall (nick: 不需要那么大).
+  const W = 760, H = 160, padL = 30, padR = 10, padT = 10, padB = 22;
   const t0 = Date.parse(pts[0].t), t1 = Date.parse(pts[pts.length - 1].t) || t0 + 1;
   const x = t => padL + (W - padL - padR) * ((Date.parse(t) - t0) / Math.max(1, t1 - t0));
   const y = v => padT + (H - padT - padB) * (1 - Math.max(0, Math.min(100, v)) / 100);
@@ -470,6 +472,12 @@ function renderDetail() {
   if (s.firmwareWarning) banners.push(`<div class="banner bad">⚠ ${esc(s.firmwareWarning.text)}</div>`);
   if (s.refurb?.suspect) banners.push(`<div class="banner warn">⚠ ${L('疑似翻新盘（SMART 可能被清零过）：', 'Possibly refurbished (SMART may have been reset): ')}${esc(s.refurb.reasons.join(L('；', '; ')))}</div>`);
   if (s.link?.note) banners.push(`<div class="banner ${s.link.state === 'warn' ? 'warn' : 'info'}">${s.link.state === 'warn' ? '⚠' : 'ℹ'} ${L('接口：', 'Interface: ')}${esc(s.link.note)}</div>`);
+  // Three tabs instead of one long page: overview, tests, SMART details.
+  const hasTests = ['bench', 'scan', 'selftest', 'capacity', 'erase'].some(on);
+  const raw = rawTable(d, s, true);
+  const tabs = [['overview', L('概览', 'Overview')], ...(hasTests ? [['tests', L('检测工具', 'Tests')]] : []), ...(raw ? [['smart', L('详细数据', 'SMART details')]] : [])];
+  if (!tabs.some(t => t[0] === detailTab)) detailTab = 'overview';
+  const side = [on('grade') ? gradeCard(d, s) : '', on('history') ? historyCard(d) : ''].filter(Boolean);
   $('#detail').innerHTML = head + banners.join('') + `
     <section class="hero">
       <div class="gauge-card">${gauge(s.health, s.status)}
@@ -478,11 +486,21 @@ function renderDetail() {
       </div>
       <div class="metrics">${metricsFor(d, s)}</div>
     </section>
-    <section id="tools" class="tools"></section>
-    ${on('selftest') || on('grade') ? `<section class="tools tools2${on('selftest') && on('grade') ? '' : ' one'}">${on('selftest') ? selfTestCard(d) : ''}${on('grade') ? gradeCard(d, s) : ''}</section>` : ''}
-    ${on('history') ? `<section class="tools tools3">${historyCard(d)}</section>` : ''}
-    <section id="tools4" class="tools tools2"></section>
-    ${rawTable(d, s)}`;
+    <nav class="tabs" role="tablist">${tabs.map(([k, t]) => `<button type="button" class="tab${k === detailTab ? ' on' : ''}" data-tab="${k}" role="tab">${t}</button>`).join('')}</nav>
+    <div class="tab-panel" data-panel="overview"${detailTab === 'overview' ? '' : ' hidden'}>
+      ${side.length ? `<section class="tools ${side.length === 2 ? 'tools-gh' : 'tools3'}">${side.join('')}</section>` : `<div class="empty small">${L('评级和健康记录已在设置里关闭。', 'Grade and health history are turned off in Settings.')}</div>`}
+    </div>
+    <div class="tab-panel" data-panel="tests"${detailTab === 'tests' ? '' : ' hidden'}>
+      <section id="tools" class="tools"></section>
+      ${on('selftest') ? `<section class="tools tools3">${selfTestCard(d)}</section>` : ''}
+      <section id="tools4" class="tools tools2"></section>
+    </div>
+    <div class="tab-panel" data-panel="smart"${detailTab === 'smart' ? '' : ' hidden'}>${raw}</div>`;
+  $('#detail').querySelectorAll('.tab').forEach(b => b.onclick = () => {
+    detailTab = b.dataset.tab;
+    $('#detail').querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+    $('#detail').querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== detailTab; });
+  });
   renderTools();
   if (!on('selftest')) return;
   bindSelfTest(d);
@@ -563,6 +581,7 @@ const SET_FIELDS = ['lang', 'shopName', 'shopAddress', 'shopContact', 'whatsapp'
 const FEAT_FIELDS = ['f_bench', 'f_scan', 'f_selftest', 'f_grade', 'f_history', 'f_capacity', 'f_erase', 'f_sensors'];
 const LIM_DEFAULTS = { lim_drop: 2, lim_hdd: 60, lim_ssd: 70, lim_nvme: 80, lim_cpu_w: 85, lim_cpu_b: 95, lim_gpu_w: 83, lim_gpu_b: 90, lim_board_w: 75, lim_board_b: 90 };
 let appSettings = {};
+let detailTab = 'overview';   // which tab of the drive page is open; kept when switching drives
 const on = f => String(appSettings['f_' + f] ?? '1') !== '0';
 // Checkboxes for the f_* switches and the monitor; '0' when unticked so a saved "off" is kept.
 const checkVals = f => Object.fromEntries([...FEAT_FIELDS, 'monitorOn'].map(k => [k, f.elements[k].checked ? '1' : (k === 'monitorOn' ? '' : '0')]));
