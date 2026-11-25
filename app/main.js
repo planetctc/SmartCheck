@@ -349,6 +349,13 @@ async function remoteSend(scan, alerts, force) {
 
 function xmlEsc(v) { return String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
+// The signed-in Windows user. The task runs for this user with highest privileges, so the elevated
+// (requireAdministrator) exe starts at logon without a UAC prompt. A "Users" group task cannot elevate.
+function taskUser() {
+  const u = process.env.USERNAME || os.userInfo().username;
+  return process.env.USERDOMAIN ? `${process.env.USERDOMAIN}\\${u}` : u;
+}
+
 // Create or remove the logon task. Only for the installed app on Windows; the app itself runs elevated.
 function setMonitorTask(enabled) {
   if (!app.isPackaged || process.platform !== 'win32') return Promise.resolve(false);
@@ -357,8 +364,8 @@ function setMonitorTask(enabled) {
     const xml = `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo><Author>PLANET COMPUTER TECHNOLOGY CENTRE</Author><Description>smartDisk 硬盘健康监控</Description></RegistrationInfo>
-  <Triggers><LogonTrigger><Enabled>true</Enabled><Delay>PT1M</Delay></LogonTrigger></Triggers>
-  <Principals><Principal id="Author"><GroupId>S-1-5-32-545</GroupId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
+  <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>${xmlEsc(taskUser())}</UserId><Delay>PT1M</Delay></LogonTrigger></Triggers>
+  <Principals><Principal id="Author"><UserId>${xmlEsc(taskUser())}</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
   <Settings>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
@@ -481,12 +488,21 @@ function refreshTrayMenu() {
   tray.setContextMenu(menu);
 }
 
-function startMonitor() {
+function startMonitor(fromApp) {
+  if (tray) return;
   const img = nativeImage.createFromPath(path.join(__dirname, 'icon.png')).resize({ width: 16, height: 16 });
   tray = new Tray(img);
   tray.setToolTip(L('smartDisk 硬盘监控', 'smartDisk drive monitor'));
   refreshTrayMenu();
   tray.on('double-click', () => createWindow());
+  tray.on('click', () => createWindow());
+  // Closing the main window leaves the monitor running, so say once where it went.
+  if (fromApp) {
+    try {
+      tray.displayBalloon({ iconType: 'info', title: L('smartDisk 硬盘监控', 'smartDisk drive monitor'),
+        content: L('smartDisk 会在右下角继续监控硬盘，有问题会提醒。右键图标可以退出。', 'smartDisk keeps watching the drives from here and will warn you of problems. Right-click the icon to quit.') });
+    } catch {}
+  }
   setTimeout(() => monitorCheck(false), 2 * 60 * 1000);
   setInterval(() => monitorCheck(false), CHECK_EVERY_MS);
   // Installed copies on customer PCs update themselves quietly; the new version installs when Windows restarts.
@@ -548,5 +564,8 @@ app.whenReady().then(() => {
 });
 app.on('window-all-closed', () => {
   if (task) task.cancel();
-  if (!tray) app.quit();   // the monitor keeps running in the tray
+  if (tray) return;   // the monitor keeps running in the tray
+  // Installed copy: closing the window moves smartDisk to the tray right away instead of waiting for the next logon.
+  if (app.isPackaged && process.platform === 'win32' && loadMonitor().enabled !== false) return startMonitor(true);
+  app.quit();
 });
