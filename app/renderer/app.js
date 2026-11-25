@@ -169,12 +169,91 @@ function scanCard(d, t) {
     <div class="tool-foot">${foot}</div></div>`;
 }
 
+function gb(b) { return b == null ? '-' : b >= 1e12 ? (b / 1e12).toFixed(2) + ' TB' : (b / 1e9).toFixed(1) + ' GB'; }
+
+// ---- fake-capacity check ----
+function capacityCard(d, t) {
+  const c = t.capacity;
+  const busy = running && running.kind === 'capacity' && running.key === diskKey(d);
+  const letter = d.letters?.[0];
+  let body;
+  if (busy && c) body = `<div class="progress"><i style="width:${c.pct || 0}%"></i></div><div class="small">${c.phase === 'verify' ? L('第 2 步：读回检查', 'Step 2: reading back') : L('第 1 步：写满剩余空间', 'Step 1: filling free space')} ${(c.pct || 0).toFixed(0)}% · ${mbps(c.mbps)} MB/s${c.bad ? ` · <b class="st-bad">${L('发现错误', 'errors found')}</b>` : ''}</div>`;
+  else if (c?.status === 'done') {
+    const used = (c.total || 0) - (c.free || 0);
+    if (c.badBytes > 0 || c.writeFailed) {
+      const real = used + (c.firstBad >= 0 ? c.firstBad : c.okBytes || 0);
+      body = `<div class="cap-res bad">✖ ${L('假容量 / 有问题', 'Fake capacity / faulty')}</div><div class="small">${L(`标示 ${gb(c.total)}，实际只有约 <b>${gb(real)}</b> 能正确存资料。超过的部分写进去会读不回来，不要拿来存东西。`, `Labelled ${gb(c.total)}, but only about <b>${gb(real)}</b> stores data correctly. Anything beyond that is lost. Do not use it for data.`)}</div>`;
+    } else body = `<div class="cap-res ok">✔ ${L('容量是真的', 'Capacity is genuine')}</div><div class="small">${L(`测了 ${gb(c.tested)} 剩余空间，全部读回正确。写入 ${mbps(c.writeMbps)} MB/s，读取 ${mbps(c.readMbps)} MB/s。`, `Tested ${gb(c.tested)} of free space; everything read back correctly. Write ${mbps(c.writeMbps)} MB/s, read ${mbps(c.readMbps)} MB/s.`)}</div>`;
+  } else if (c?.status === 'error' || c?.error) body = `<div class="small st-bad">${L('检测失败：', 'Check failed: ')}${esc(c.code === 'nospace' ? L('没有剩余空间', 'no free space') : c.error || '')}</div>`;
+  else body = `<div class="muted small">${L('把剩余空间写满测试资料再读回来检查，找出「假容量」的 U 盘和便宜 SSD。原有文件不会动到，测完自动删除。', 'Fills the free space with test data and reads it back, to catch fake-capacity USB sticks and cheap SSDs. Existing files are not touched; test files are deleted afterwards.')}</div>`;
+  const foot = busy ? `<div class="tool-status"><span class="spin"></span>${L('检测中…', 'Checking…')}</div><button class="cancel">${L('停止', 'Stop')}</button>`
+    : !letter ? `<div class="muted small">${L('没有盘符，无法检测。', 'No drive letter; cannot check.')}</div>`
+    : `<div class="muted small">${L(`${esc(letter)} 盘，时间看剩余空间大小`, `Drive ${esc(letter)}; time depends on free space`)}</div><button class="go" data-kind="capacity" ${running ? 'disabled' : ''}>${c ? L('重新检测', 'Check again') : L('开始检测', 'Start')}</button>`;
+  return `<div class="tool"><h3>${L('容量真假检测', 'Fake-capacity check')}</h3>${body}<div class="tool-foot">${foot}</div></div>`;
+}
+
+// ---- secure erase ----
+function eraseCard(d, t) {
+  const e = t.erase;
+  const busy = running && running.kind === 'erase' && running.key === diskKey(d);
+  let body;
+  if (busy) body = `<div class="progress danger"><i style="width:${e?.phase === 'nvme' ? 50 : e?.pct || 0}%"></i></div><div class="small">${e?.phase === 'nvme' ? L('NVMe 格式化清除中，通常几秒到几分钟…', 'NVMe format in progress, usually seconds to minutes…') : L(`覆盖写零 ${(e?.pct || 0).toFixed(1)}% · ${mbps(e?.mbps)} MB/s`, `Overwriting with zeros ${(e?.pct || 0).toFixed(1)}% · ${mbps(e?.mbps)} MB/s`)}</div>`;
+  else if (e?.status === 'done') body = `<div class="cap-res ok">✔ ${L('擦除完成', 'Erase finished')}</div><div class="small">${e.method === 'nvme' ? L('用 NVMe 格式化清除。', 'Cleared with NVMe format.') : L(`整块硬盘已覆盖写零${e.errors ? `，有 ${e.errors} 处写入失败` : ''}。`, `Whole drive overwritten with zeros${e.errors ? `, ${e.errors} write errors` : ''}.`)}${L('硬盘现在是空的，需要重新分区才能用。', ' The drive is now blank and needs new partitions.')}</div>`;
+  else if (e?.status === 'error' || e?.error) body = `<div class="small st-bad">${L('擦除失败：', 'Erase failed: ')}${esc(e.code === 'inuse' ? L('硬盘上的文件正在使用，请关闭相关窗口和程序再试。', 'files on the drive are in use; close them and try again.') : e.code === 'system' || e.error === 'system' ? L('这是 Windows 系统盘，不能擦除。', 'this is the Windows disk; it cannot be erased.') : e.error || '')}</div>`;
+  else body = `<div class="muted small">${L('卖出或送出旧硬盘前，彻底清除全部资料。NVMe 用硬盘自带的格式化清除，其他硬盘整块覆盖写零。', 'Wipes all data before selling or giving away a drive. NVMe uses the drive\'s own format; other drives are overwritten with zeros.')}</div>`;
+  const foot = busy ? `<div class="tool-status danger-txt"><span class="spin"></span>${L('擦除中，请勿拔出硬盘…', 'Erasing, do not unplug…')}</div>`
+    : d.isSystem ? `<div class="muted small">${L('Windows 系统盘不能擦除。', 'The Windows disk cannot be erased.')}</div>`
+    : `<div class="muted small">${L('会要求输入序列号确认', 'Asks for the serial number to confirm')}</div><button class="erase-go danger" ${running ? 'disabled' : ''}>${L('安全擦除…', 'Secure erase…')}</button>`;
+  return `<div class="tool danger-tool"><h3>${L('安全擦除', 'Secure erase')}</h3>${body}<div class="tool-foot">${foot}</div></div>`;
+}
+
+function openErase(d) {
+  const f = $('#eraseForm');
+  const code = d.serial || `DISK${d.index}`;
+  $('#eraseWhat').innerHTML = `<b>${esc(d.model)}</b><br>${esc(busText(d.bus))} · ${size(d.sizeBytes)} · ${L('序列号', 'S/N')} ${esc(d.serial || '-')}${letters(d) ? ` · ${L('盘符', 'Drive')} ${esc(letters(d))}` : ''}`;
+  $('#eraseTypeLbl').textContent = L(`请输入序列号确认：${code}`, `Type the serial number to confirm: ${code}`);
+  f.reset();
+  let wait = 5;
+  const check = () => {
+    const ok = f.elements.backed.checked && f.elements.serial.value.trim().toUpperCase() === code.toUpperCase();
+    $('#eraseGo').disabled = !ok || wait > 0;
+    $('#eraseGo').textContent = wait > 0 ? L(`擦除（${wait}）`, `Erase (${wait})`) : L('擦除', 'Erase');
+  };
+  const timer = setInterval(() => { wait--; check(); if (wait <= 0) clearInterval(timer); }, 1000);
+  f.oninput = check; check();
+  f.onsubmit = async (ev) => {
+    if (ev.submitter?.value !== 'ok') { clearInterval(timer); return; }
+    ev.preventDefault();
+    if (!window.confirm(L(`最后确认：清除 ${d.model}（${size(d.sizeBytes)}）上的全部资料？`, `Last check: destroy all data on ${d.model} (${size(d.sizeBytes)})?`))) return;
+    clearInterval(timer);
+    $('#eraseDlg').close();
+    startTool(d, 'erase');
+  };
+  $('#eraseDlg').showModal();
+}
+
+async function startTool(d, kind) {
+  const key = diskKey(d);
+  tests[key] = { ...tests[key], [kind]: { status: 'running', results: {}, pct: 0 } };
+  running = { kind, key };
+  renderTools();
+  const r = await window.smartdisk.startTask(kind, d.index, d.letters?.[0]);
+  if (!r.ok) { running = null; tests[key][kind] = { status: 'error', error: r.error, code: r.error }; renderTools(); }
+}
+
 function renderTools() {
   const el = $('#tools');
   if (!el || current < 0) return;
   const d = data.disks[current];
   const t = tests[diskKey(d)] || {};
   el.innerHTML = benchCard(d, t) + scanCard(d, t);
+  const el4 = $('#tools4');
+  if (el4) {
+    el4.innerHTML = capacityCard(d, t) + eraseCard(d, t);
+    el4.querySelectorAll('button.go').forEach(b => b.onclick = () => startTool(d, b.dataset.kind));
+    el4.querySelectorAll('button.cancel').forEach(b => b.onclick = () => window.smartdisk.cancelTask());
+    el4.querySelectorAll('button.erase-go').forEach(b => b.onclick = () => openErase(d));
+  }
   el.querySelectorAll('button.go').forEach(b => b.onclick = async () => {
     const kind = b.dataset.kind;
     if (kind === 'scan' && !confirmScan(d)) return;
@@ -205,7 +284,7 @@ window.smartdisk.onTask?.((ev) => {
     (ev.cells || []).forEach((v, i) => { cur.cells[ev.from + i] = v; });
   }
   if (ev.type === 'error') cur.error = ev.message;
-  if (ev.type === 'end') { t[ev.kind] = { ...ev.result }; running = null; if (ev.kind === 'scan' && ev.result?.bad && current >= 0) return renderDetail(); }
+  if (ev.type === 'end') { t[ev.kind] = { ...ev.result }; running = null; if (ev.kind === 'erase' && ev.status === 'done') setTimeout(scan, 1500); if (ev.kind === 'scan' && ev.result?.bad && current >= 0) return renderDetail(); }
   if (current >= 0 && data.disks[current] && diskKey(data.disks[current]) === ev.key) renderTools();
   else if (ev.type === 'end') renderTools();
 });
@@ -375,6 +454,7 @@ function renderDetail() {
     <section id="tools" class="tools"></section>
     <section class="tools tools2">${selfTestCard(d)}${gradeCard(d, s)}</section>
     <section class="tools tools3">${historyCard(d)}</section>
+    <section id="tools4" class="tools tools2"></section>
     ${rawTable(d, s)}`;
   renderTools();
   bindSelfTest(d);

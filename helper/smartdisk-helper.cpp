@@ -9,6 +9,7 @@
 //        smartdisk-helper.exe --pretty   -> same, indented
 //        smartdisk-helper.exe bench X [MiB] / scan N  -> see disktests.cpp
 //        smartdisk-helper.exe selftest N short|long|abort|status -> see selftest.cpp
+//        smartdisk-helper.exe capacity X / erase N ERASE-N [auto|zero|nvme] -> see disktools.cpp
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -559,11 +560,15 @@ static void writeDisk(std::ostringstream& o, const Disk& d, const char* ind) {
 int runBench(int argc, char** argv);   // disktests.cpp
 int runScan(int argc, char** argv);
 int runSelfTest(int argc, char** argv);   // selftest.cpp
+int runCapacity(int argc, char** argv);   // disktools.cpp
+int runErase(int argc, char** argv);
 
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "bench") return runBench(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "scan") return runScan(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "selftest") return runSelfTest(argc, argv);
+    if (argc > 1 && std::string(argv[1]) == "capacity") return runCapacity(argc, argv);
+    if (argc > 1 && std::string(argv[1]) == "erase") return runErase(argc, argv);
     bool pretty = argc > 1 && std::string(argv[1]) == "--pretty";
     std::vector<Disk> disks;
     bool anyAccessDenied = false;
