@@ -5,7 +5,9 @@ name: Deploy remote service (Cloudflare)
 #   CLOUDFLARE_API_TOKEN   API token with "Edit Cloudflare Workers" + "D1 Edit" permissions
 #   CLOUDFLARE_ACCOUNT_ID  the account id (Workers & Pages overview page)
 #   DASH_PASSWORD          password for the smartDisk back-office page
-#   TG_TOKEN, TG_CHAT      optional: Telegram bot token and chat id for instant alerts
+#   RESEND_KEY             Resend API key for alert emails (sign up at resend.com with the shop mailbox)
+#   MAIL_TO                optional: where alerts go (default planet@planetctc.com.my)
+#   TG_TOKEN, TG_CHAT      optional: Telegram bot token and chat id
 on:
   workflow_dispatch:
   push:
@@ -61,10 +63,12 @@ jobs:
         if: steps.chk.outputs.go == '1'
         env:
           DASH_PASSWORD: ${{ secrets.DASH_PASSWORD }}
+          RESEND_KEY: ${{ secrets.RESEND_KEY }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT: ${{ secrets.TG_CHAT }}
         run: |
-          for k in DASH_PASSWORD TG_TOKEN TG_CHAT; do
+          for k in DASH_PASSWORD RESEND_KEY MAIL_TO TG_TOKEN TG_CHAT; do
             v="${!k}"
             if [ -n "$v" ]; then printf '%s' "$v" | $WRANGLER secret put "$k" >/dev/null && echo "$k set"; else echo "$k not set"; fi
           done

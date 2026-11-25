@@ -3,7 +3,9 @@
 //   GET  /             password-protected page: every PC, its drives, and open alerts
 // Secrets (set by the deploy workflow from GitHub secrets, never in this file):
 //   DASH_PASSWORD             password for the page
-//   TG_TOKEN, TG_CHAT         optional Telegram bot token and chat id for instant alerts
+//   RESEND_KEY                Resend API key: alert emails to MAIL_TO (default planet@planetctc.com.my)
+//   MAIL_TO, MAIL_FROM        optional; MAIL_FROM only after a domain is verified in Resend
+//   TG_TOKEN, TG_CHAT         optional Telegram bot token and chat id
 // The licence public key is the same as smartAcc / smartDisk; only keys with product "smartdisk" are accepted.
 
 const PUB = 'MCowBQYDK2VwAyEAv47aHbwc/+JdfJ3RxL26W0lFlbVQH0odWVzYoe/C7W4=';
@@ -75,19 +77,25 @@ async function report(req, env) {
   return json({ ok: true });
 }
 
+// Alerts go by email (Resend, free tier: sign up with the shop mailbox, no domain setup needed) and/or Telegram.
 async function notify(env, req, { customer, pc, alerts, first }) {
-  if (!env.TG_TOKEN || !env.TG_CHAT) return;
+  const origin = new URL(req.url).origin;
+  const subject = first ? `smartDisk：${customer || pc} 已连上后台` : `⚠️ smartDisk 硬盘提醒：${customer || '-'}（${pc}）`;
   const lines = first
-    ? [`🆕 smartDisk: ${customer || '-'} (${pc}) 已连上后台`]
-    : [`⚠️ smartDisk 硬盘提醒`, `客户：${customer || '-'}`, `电脑：${pc}`,
-      ...alerts.map(a => `• ${a.model}${(a.letters || []).length ? ' (' + a.letters.join(' ') + ')' : ''}: ${(a.text || []).join('；')}`)];
-  lines.push(new URL(req.url).origin);
-  try {
-    await fetch(`https://api.telegram.org/bot${env.TG_TOKEN}/sendMessage`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: env.TG_CHAT, text: lines.join('\n'), disable_web_page_preview: true }),
-    });
-  } catch {}
+    ? [`${customer || '-'}（${pc}）的电脑已经连上 smartDisk 后台。`]
+    : [`客户：${customer || '-'}`, `电脑：${pc}`, '',
+      ...alerts.map(a => `• ${a.model}${(a.letters || []).length ? ' (' + a.letters.join(' ') + ')' : ''}：${(a.text || []).join('；')}`)];
+  lines.push('', `后台：${origin}`);
+  const text = lines.join('\n'), jobs = [];
+  if (env.RESEND_KEY) jobs.push(fetch('https://api.resend.com/emails', {
+    method: 'POST', headers: { Authorization: `Bearer ${env.RESEND_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: env.MAIL_FROM || 'smartDisk <onboarding@resend.dev>', to: [env.MAIL_TO || 'planet@planetctc.com.my'], subject, text }),
+  }));
+  if (env.TG_TOKEN && env.TG_CHAT) jobs.push(fetch(`https://api.telegram.org/bot${env.TG_TOKEN}/sendMessage`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: env.TG_CHAT, text: subject + '\n' + text, disable_web_page_preview: true }),
+  }));
+  await Promise.allSettled(jobs);
 }
 
 // ---- password-protected page ----
