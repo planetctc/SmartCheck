@@ -22,4 +22,5 @@ contextBridge.exposeInMainWorld('smartdisk', {
   alertAction: (a) => ipcRenderer.invoke('alert:action', a),
   onAlert: (fn) => ipcRenderer.on('alert:data', (_e, d) => fn(d)),
   onTask: (fn) => ipcRenderer.on('task:event', (_e, ev) => fn(ev)),
+  onUpdate: (fn) => ipcRenderer.on('update:status', (_e, s) => fn(s)),
 });

@@ -247,3 +247,4 @@ dialog.form-dlg .lim-grid input[type=number] { width: 58px; box-sizing: border-b
 @media (max-width: 1100px) { .tools-gh { grid-template-columns: minmax(0, 1fr); } }
 .sys-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 8px 8px; }
 .sys-card .sens-h { padding: 0 8px; }
+.upd-note { color: var(--accent); font-weight: 600; }

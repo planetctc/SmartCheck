@@ -277,6 +277,17 @@ function confirmScan(d) {
   return est < 3600 || window.confirm(L(`机械硬盘全盘扫描预计要 ${dur(est)}，期间可以随时停止。要开始吗？`, `A full scan of this hard drive takes about ${dur(est)}. You can stop it any time. Start now?`));
 }
 
+// Update download progress under the scan time, so "Download and install" never looks like it did nothing.
+window.smartdisk.onUpdate?.((u) => {
+  const el = $('#updNote');
+  if (!el) return;
+  el.hidden = false;
+  el.className = 'small ' + (u.phase === 'error' ? 'warn-txt' : 'upd-note');
+  el.textContent = u.phase === 'start' ? L('正在下载更新…', 'Downloading the update…')
+    : u.phase === 'progress' ? L(`正在下载更新… ${u.pct}%`, `Downloading the update… ${u.pct}%`)
+    : u.phase === 'ready' ? L(`新版本 ${u.version || ''} 已下载好，关闭 smartPC 时会自动安装。`, `Version ${u.version || ''} is downloaded and installs when smartPC closes.`)
+    : L('更新下载失败，请稍后再试。', 'The update download failed. Try again later.');
+});
 window.smartdisk.onTask?.((ev) => {
   const t = (tests[ev.key] ||= {});
   const cur = t[ev.kind] ||= { results: {} };
