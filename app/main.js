@@ -700,18 +700,43 @@ ipcMain.handle('mem:start', (_e, o) => {
     send({ type: 'start', planBytes: 12 * 1024 ** 3, totalBytes: 16 * 1024 ** 3 });
     return { ok: true };
   }
-  mem = memtest.quickTest({ passes, onEvent: ev => {
-    if (ev.type === 'start') Object.assign(acc, { planBytes: ev.planBytes, totalBytes: ev.totalBytes });
+  const onEvent = ev => {
+    if (ev.type === 'start') Object.assign(acc, { planBytes: ev.planBytes, totalBytes: ev.totalBytes, lockedBytes: ev.lockedBytes });
     if (ev.type === 'progress') Object.assign(acc, { pct: ev.pct, errors: ev.errors });
     if (ev.type === 'done') {
+      if (!mem) return;   // only one end per test
       mem = null;
-      Object.assign(acc, { status: ev.stopped ? 'canceled' : ev.error ? 'error' : 'done', errors: ev.errors, bad: ev.bad, testedBytes: ev.testedBytes, error: ev.error, finishedAt: new Date().toISOString() });
+      Object.assign(acc, { status: ev.stopped ? 'canceled' : ev.error ? 'error' : 'done', errors: ev.errors, bad: ev.bad, testedBytes: ev.testedBytes, lockedBytes: ev.lockedBytes ?? acc.lockedBytes, error: ev.error, finishedAt: new Date().toISOString() });
       if (acc.status === 'done') testResults.pc = { ...testResults.pc, mem: acc };
       send({ type: 'done', result: acc });
       return;
     }
     send(ev);
-  } });
+  };
+  // The helper locks the memory it tests in RAM and runs MemTest86-style patterns on all cores; without it, the
+  // slower in-Node test (which Windows may page out under pressure).
+  const exe = helperPath();
+  if (fs.existsSync(exe)) {
+    acc.engine = 'native';
+    const child = spawn(exe, ['memtest', String(passes)], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    let buf = '', gotDone = false;
+    child.stdout.on('data', chunk => {
+      buf += chunk.toString('utf8');
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        try { const ev = JSON.parse(line); if (ev.type === 'done') gotDone = true; onEvent(ev); } catch {}
+      }
+    });
+    child.on('error', e => onEvent({ type: 'done', errors: 0, error: String(e.message || e), testedBytes: 0 }));
+    child.on('close', code => { if (!gotDone) onEvent({ type: 'done', errors: 0, error: `helper stopped (${code})`, testedBytes: 0, stopped: stopAsked }); });
+    let stopAsked = false;
+    send({ type: 'start', planBytes: 0, totalBytes: os.totalmem() });   // show "running" while the helper reserves memory
+    mem = { stop: () => { stopAsked = true; try { child.stdin.end(); } catch {} setTimeout(() => { try { child.kill(); } catch {} }, 5000); } };
+    return { ok: true };
+  }
+  acc.engine = 'js';
+  mem = memtest.quickTest({ passes, onEvent });
   return { ok: true };
 });
 ipcMain.handle('mem:stop', () => { if (mem) mem.stop(); return true; });

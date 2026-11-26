@@ -1087,14 +1087,14 @@ window.renderMem = function renderMem() {
   let body;
   if (memState.running) {
     body = `<div class="progress"><i style="width:${memLive?.pct || 0}%"></i></div>
-      <div class="tool-foot"><div class="tool-status"><span class="spin"></span>${memLive?.type === 'alloc' ? L(`正在占用内存 ${memLive.n}/${memLive.of}…`, `Reserving memory ${memLive.n}/${memLive.of}…`) : L(`测试中 ${memLive?.pct || 0}% · 错误 ${memLive?.errors || 0}`, `Testing ${memLive?.pct || 0}% · errors ${memLive?.errors || 0}`)}</div><button class="cancel" id="memStop">${L('停止', 'Stop')}</button></div>`;
+      <div class="tool-foot"><div class="tool-status"><span class="spin"></span>${memLive?.type === 'alloc' ? L(`正在占用内存 ${memLive.n}/${memLive.of}…`, `Reserving memory ${memLive.n}/${memLive.of}…`) : L(`测试中 ${memLive?.pct || 0}% · 第 ${memLive?.pass || 1} 遍${memLive?.test ? ' · ' + esc(memLive.test) : ''} · 错误 ${memLive?.errors || 0}`, `Testing ${memLive?.pct || 0}% · pass ${memLive?.pass || 1}${memLive?.test ? ' · ' + esc(memLive.test) : ''} · errors ${memLive?.errors || 0}`)}</div><button class="cancel" id="memStop">${L('停止', 'Stop')}</button></div>`;
   } else {
     const lastHtml = last ? `<div class="burn-res"><div class="burn-verdict ${last.errors ? 'st-bad' : 'st-ok'}">${last.errors ? L(`发现 ${last.errors} 个错误`, `${last.errors} errors found`) : L('没有错误', 'No errors')}</div>
         <div class="small muted">${new Date(last.finishedAt).toLocaleString()} · ${L(`测了 ${gbOf(last.testedBytes)} GB / 共 ${gbOf(last.totalBytes)} GB`, `${gbOf(last.testedBytes)} GB of ${gbOf(last.totalBytes)} GB tested`)} · ${L(`${last.passes} 遍`, `${last.passes} pass(es)`)}</div>
         ${last.errors ? `<div class="small st-bad">${L('内存不稳定或有坏的内存条。可以关掉 XMP 再测，或一条一条测找出坏的那条。', 'Memory is unstable or a stick is bad. Turn off XMP and test again, or test one stick at a time to find the bad one.')}</div>` : ''}</div>` : '';
     const fullHtml = full ? `<div class="small ${full.ok ? 'st-ok' : 'st-bad'}">${L('上次 Windows 内存诊断：', 'Last Windows Memory Diagnostic: ')}${full.ok ? L('没有错误', 'no errors') : L('发现错误', 'errors found')} · ${new Date(full.time).toLocaleString()}</div>` : '';
-    body = `<div class="small muted">${L('快速测试：在 Windows 里把大部分空闲内存写满不同的资料再读回来检查，几分钟就好，不用重启。Windows 自己正在用的内存测不到，要测全部请用完整测试。',
-      'Quick test: fills most of the free memory with patterns and reads them back, a few minutes, no restart. Memory Windows is using cannot be tested; use the full test for all of it.')}</div>
+    body = `<div class="small muted">${L('快速测试：把大部分空闲内存锁在实体内存里，用全部核心跑 14 种测试（地址、移动反转、随机数，和 MemTest86 同类），不用重启。Windows 自己正在用的内存测不到，要测全部请用完整测试。',
+      'Quick test: locks most of the free memory in RAM and runs 14 tests on all cores (address, moving inversions, random numbers, like MemTest86), no restart. Memory Windows is using cannot be tested; use the full test for all of it.')}</div>
       <div class="burn-opts">
         <label>${L('遍数', 'Passes')} <select id="memPass">${[1, 2, 3].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
         <button id="memFull">${L('完整测试（需重启）', 'Full test (restart)')}</button>
