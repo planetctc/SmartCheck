@@ -60,6 +60,7 @@ function rawText(id, raw) {
 
 // Attributes whose raw value > 0 indicates physical damage.
 const CRITICAL_RAW = [5, 196, 197, 198];
+const REALLOC_BAD = 100;   // this many reallocated sectors: the drive is wearing out fast, replace it
 
 function attrName(id) { return L(ATA_NAMES[id], ATA_NAMES_EN[id]) || L(`厂商自定义 (${id})`, `Vendor specific (${id})`); }
 
@@ -81,16 +82,27 @@ function evaluateAta(disk) {
   for (const id of CRITICAL_RAW) {
     const a = byId[id];
     if (a && a.raw > 0) {
-      if (a.state === 'ok') a.state = 'warn';
-      if (status === 'good') status = 'warn';
+      // Pending (197) and uncorrectable (198) sectors are data that can no longer be read: the drive is failing.
+      // Reallocated sectors (5, 196) were already replaced by spares: a warning, until there are many of them.
+      const failing = id === 197 || id === 198 || a.raw >= REALLOC_BAD;
+      a.state = failing ? 'bad' : a.state === 'ok' ? 'warn' : a.state;
+      if (failing) status = 'bad'; else if (status === 'good') status = 'warn';
       health -= Math.min(40, 5 + a.raw);   // tweak to taste
       reasons.push(`${a.name}: ${a.raw}`);
     }
+  }
+  // Reported uncorrectable errors (187): reads the drive could not fix.
+  if (byId[187]?.raw > 0) {
+    if (byId[187].state === 'ok') byId[187].state = 'warn';
+    if (status === 'good') status = 'warn';
+    health -= Math.min(20, 2 * byId[187].raw);
+    reasons.push(`${byId[187].name}: ${byId[187].raw}`);
   }
   // SSD wear indicators (normalized current value is the remaining life %).
   for (const id of [231, 169, 233, 177]) {
     if (byId[id] && byId[id].current <= 100) { health = Math.min(health, byId[id].current); break; }
   }
+  if (clamp(health) === 0 && status !== 'bad') status = 'bad';   // nothing left
   const t = byId[194] || byId[190];
   return {
     health: clamp(status === 'bad' ? Math.min(health, 10) : health),
@@ -112,7 +124,8 @@ function evaluateNvme(disk) {
   if (n.criticalWarning) { status = 'bad'; reasons.push(L('严重警告位', 'Critical warning bits') + `: 0x${n.criticalWarning.toString(16)}`); }
   if (n.availableSpare < n.spareThreshold) { status = 'bad'; reasons.push(L('备用空间低于阈值', 'Available spare below threshold')); }
   if (n.mediaErrors > 0 && status === 'good') { status = 'warn'; reasons.push(L('介质错误', 'Media errors') + `: ${n.mediaErrors}`); }
-  if (n.percentageUsed >= 90 && status === 'good') { status = 'warn'; reasons.push(L('寿命已用超过 90%', 'Over 90% of rated life used')); }
+  if (n.percentageUsed >= 100) { status = 'bad'; reasons.push(L('寿命已用完（100%）', 'Rated life used up (100%)')); }
+  else if (n.percentageUsed >= 90 && status === 'good') { status = 'warn'; reasons.push(L('寿命已用超过 90%', 'Over 90% of rated life used')); }
 
   const tb = units => (units * 512000 / 1e12).toFixed(2) + ' TB'; // 1 unit = 1000 * 512 bytes
   const st = v => (v === 'bad' ? 'bad' : v === 'warn' ? 'warn' : 'ok');

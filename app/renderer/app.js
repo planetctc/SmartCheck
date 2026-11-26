@@ -299,7 +299,7 @@ window.smartdisk.onTask?.((ev) => {
     (ev.cells || []).forEach((v, i) => { cur.cells[ev.from + i] = v; });
   }
   if (ev.type === 'error') cur.error = ev.message;
-  if (ev.type === 'end') { t[ev.kind] = { ...ev.result }; running = null; if (ev.kind === 'erase' && ev.status === 'done') setTimeout(scan, 1500); if (ev.kind === 'scan' && ev.result?.bad && current >= 0) return renderDetail(); }
+  if (ev.type === 'end') { t[ev.kind] = { ...ev.result }; running = null; if (ev.kind === 'erase' && ev.status === 'done') setTimeout(scan, 1500); if (ev.kind === 'scan' && ev.result?.bad) return render(); }
   if (current >= 0 && data.disks[current] && diskKey(data.disks[current]) === ev.key) renderTools();
   else if (ev.type === 'end') renderTools();
 });
@@ -837,7 +837,18 @@ function renderDisk() {
   if (!selfTests[diskKey(d)] || !selfTests[diskKey(d)].running) refreshSelfTest(d);
 }
 
+// A surface scan that found bad sectors, or a failed SMART self-test, makes the drive "replace soon" whatever SMART says.
+function escalateFromTests() {
+  for (const d of data.disks || []) {
+    const s = d.summary, t = tests[diskKey(d)];
+    if (!s || s.status === 'bad' || (!t && !selfTests[diskKey(d)])) continue;
+    const tt = t || {};
+    if (tt.scan?.bad > 0) { s.status = 'bad'; s.reasons = [L(`坏道扫描发现 ${num(tt.scan.bad)} 个坏道`, `${num(tt.scan.bad)} bad sectors found by the surface scan`), ...(s.reasons || [])]; }
+    else if (/^(fatal|failed)/.test((selfTests[diskKey(d)]?.last || tt.selftest)?.result || '')) { s.status = 'bad'; s.reasons = [L('SMART 自检失败', 'SMART self-test failed'), ...(s.reasons || [])]; }
+  }
+}
 function render() {
+  escalateFromTests();
   renderList();
   renderDetail();
   $('#scanTime').textContent = L('检测时间 ', 'Checked ') + new Date(data.scannedAt).toLocaleString();

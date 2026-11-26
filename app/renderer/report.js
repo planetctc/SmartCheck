@@ -165,6 +165,11 @@ window.renderReport = (p) => {
   GRADE_ON = String(p.settings?.f_grade ?? '1') !== '0';
   SETTINGS = p.settings || {};
   const disks = p.scan.disks || [];
+  // A surface scan that found bad sectors, or a failed SMART self-test, makes the drive "replace soon" whatever SMART says.
+  for (const d of disks) {
+    const t = TESTS[d.serial || `${d.model}#${d.index}`], s = d.summary;
+    if (s && s.status !== 'bad' && t && (t.scan?.bad > 0 || /^(fatal|failed)/.test(t.selftest?.result || ''))) s.status = 'bad';
+  }
   const ov = overall(disks);
   const ovText = {
     good: B('所有硬盘状况良好', 'All drives are healthy'),
