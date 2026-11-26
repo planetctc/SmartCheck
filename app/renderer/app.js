@@ -591,6 +591,34 @@ function sysRowsHtml(s) {
   }
   return `<div class="raw sys-card"><div class="attr-list">${rows.join('')}</div></div>`;
 }
+// Live sensors: while a page shows the sensor card, the main process sends new values every 2 s. The highest value of
+// each temperature, fan and power reading is kept (like HWMonitor's Max column) until "Reset max" or the page is left.
+const MAX_KINDS = ['temp', 'fan', 'power'];
+let liveOn = false, liveMax = {}, liveSince = '';
+const sensKey = x => `${x.group}|${x.part || ''}|${x.name}|${x.kind}`;
+const sensVal = (x, v) => `${esc(Number(v).toLocaleString(undefined, { maximumFractionDigits: x.kind === 'volt' ? 3 : 1 }))} ${esc(x.unit)}`;
+function trackMax(list) { for (const x of list || []) if (MAX_KINDS.includes(x.kind)) { const k = sensKey(x); if (liveMax[k] == null || x.value > liveMax[k]) liveMax[k] = x.value; } }
+function resetMax() { liveMax = {}; liveSince = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); trackMax(data.system?.sensors); }
+function syncLive() {
+  const want = !!(hasSys() && on('sensors') && $('#sensCard'));
+  if (want && !liveOn) resetMax();
+  if (want !== liveOn) { liveOn = want; window.smartdisk.liveSensors?.(want); if (want) redrawSensors(); }
+}
+function redrawSensors() {
+  const card = $('#sensCard');
+  if (!card || !data.system) return;
+  card.outerHTML = sensorsHtml(data.system);
+  bindPawnio();
+  $('#sensReset')?.addEventListener('click', () => { resetMax(); redrawSensors(); });
+}
+window.smartdisk.onLiveSensors?.(list => {
+  if (!liveOn || !data.system || !list?.length) return;
+  const hasGpu = list.some(x => x.group === 'gpu'), hasCpuTemp = list.some(x => x.group === 'cpu' && x.kind === 'temp');
+  const base = (data.system.sensors || []).filter(x => x.src !== 'lhm' && !(hasGpu && x.group === 'gpu') && !(hasCpuTemp && x.group === 'board' && x.kind === 'temp'));
+  data.system.sensors = [...list, ...base];
+  trackMax(list);
+  redrawSensors();
+});
 function sensorsHtml(s) {
   if (!on('sensors')) return '';
   const LV = { ok: 'st-ok', warn: 'st-warn', bad: 'st-bad' };
@@ -604,8 +632,10 @@ function sensorsHtml(s) {
     groups[groups.length - 1].items.push(x);
   }
   const rows = groups.map(g => `${g.part ? `<div class="sens-part">${esc(g.part)}</div>` : ''}<div class="sens-grid">${g.items.map(x =>
-    `<div class="sens-item"><span class="n">${esc(x.name)}</span><span class="v ${x.kind === 'temp' ? LV[x.level] || '' : ''}">${esc(Number(x.value).toLocaleString(undefined, { maximumFractionDigits: x.kind === 'volt' ? 3 : 1 }))} ${esc(x.unit)}</span></div>`).join('')}</div>`);
-  return `<div class="raw sys-card"><h3 class="sens-h">${L('传感器', 'Sensors')} <small class="muted">${L('读取当下的数值', 'Values at the time of the scan')}</small></h3>
+    `<div class="sens-item"><span class="n">${esc(x.name)}</span><span class="v ${x.kind === 'temp' ? LV[x.level] || '' : ''}">${sensVal(x, x.value)}${liveOn && MAX_KINDS.includes(x.kind) && liveMax[sensKey(x)] != null ? `<small class="sens-max">${L('最高', 'max')} ${sensVal(x, liveMax[sensKey(x)])}</small>` : ''}</span></div>`).join('')}</div>`);
+  const sub = liveOn ? `<span class="live-dot"></span>${L(`每 2 秒更新 · 最高值从 ${liveSince} 起`, `Updates every 2 s · max since ${liveSince}`)} <button class="mini" id="sensReset">${L('最高值清零', 'Reset max')}</button>`
+    : L('读取当下的数值', 'Values at the time of the scan');
+  return `<div class="raw sys-card" id="sensCard"><h3 class="sens-h">${L('传感器', 'Sensors')} <small class="muted">${sub}</small></h3>
     ${rows.length ? `<div class="sens-list">${rows.join('')}</div>` : `<p class="muted small">${L('这台电脑没有可以直接读取的传感器。', 'No sensors could be read on this PC.')}</p>`}
     ${s.canInstallPawnio && !s.pawnio ? `<div class="sens-drv"><span class="muted small">${L('CPU 温度、主板风扇和电压要装 PawnIO 驱动（有数字签名，只装一次）。', 'CPU temperatures, board fans and voltages need the PawnIO driver (signed, installed once).')}</span>
       <button id="pawnioBtn">${L('安装传感器驱动', 'Install sensor driver')}</button><span id="pawnioMsg" class="small"></span></div>` : ''}</div>`;
@@ -632,6 +662,7 @@ function renderPc() {
   $('#detail').innerHTML = pageHead(on('sensors') ? L('硬件与温度', 'Hardware & temperatures') : L('硬件资料', 'Hardware'), L('出机检测时一起写进 PDF 报告', 'Included in the PDF inspection report'))
     + sysNotes(s) + `<div class="pc-cols">${sysRowsHtml(s)}${sensorsHtml(s)}</div>`;
   bindPawnio();
+  $('#sensReset')?.addEventListener('click', () => { resetMax(); redrawSensors(); });
 }
 function renderTestPage(k) {
   const id = { burn: 'burnCard', mem: 'memCard', bat: 'batCard' }[k];
@@ -698,7 +729,8 @@ function renderCheck() {
   bindDiskRows(body);
   $('#stepReport')?.addEventListener('click', () => $('#reportBtn').click());
   if (checkStep === 'burn') renderBurn(); else if (checkStep === 'mem') window.renderMem(); else if (checkStep === 'bat') window.renderBat();
-  if (checkStep === 'temp') bindPawnio();
+  if (checkStep === 'temp') { bindPawnio(); $('#sensReset')?.addEventListener('click', () => { resetMax(); redrawSensors(); }); }
+  syncLive();
 }
 function bindSteps() {
   const list = $('#stepList');
@@ -738,7 +770,8 @@ function autoAfter(kind, ok) {
   setTimeout(autoNext, 800);
 }
 
-function renderDetail() {
+function renderDetail() { renderPage(); syncLive(); }
+function renderPage() {
   if (!hasSys() && ['pc', 'bat'].includes(page)) page = 'home';
   if (page === 'disk' && !data.disks[current]) page = 'home';
   if (page !== 'disk') current = -1;
