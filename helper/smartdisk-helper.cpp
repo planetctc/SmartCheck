@@ -562,6 +562,7 @@ int runScan(int argc, char** argv);
 int runSelfTest(int argc, char** argv);   // selftest.cpp
 int runCapacity(int argc, char** argv);   // disktools.cpp
 int runErase(int argc, char** argv);
+int runStress(int argc, char** argv);   // stress.cpp
 
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "bench") return runBench(argc, argv);
@@ -569,6 +570,7 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "selftest") return runSelfTest(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "capacity") return runCapacity(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "erase") return runErase(argc, argv);
+    if (argc > 1 && std::string(argv[1]) == "stress") return runStress(argc, argv);
     bool pretty = argc > 1 && std::string(argv[1]) == "--pretty";
     std::vector<Disk> disks;
     bool anyAccessDenied = false;
