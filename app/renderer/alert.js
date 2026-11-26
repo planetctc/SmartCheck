@@ -14,8 +14,10 @@ function render(p) {
   $('#ok').textContent = L('知道了', 'OK');
   const bad = p.alerts.some(a => a.severity === 'bad');
   const hotOnly = p.alerts.every(a => a.kind === 'hot');
+  const pcOnly = p.alerts.every(a => a.pcHot);
   document.body.classList.toggle('is-bad', bad);
-  $('#title').textContent = bad ? L('硬盘出现问题', 'Drive problem found') : hotOnly ? L('硬盘温度过高', 'Drive is overheating') : L('硬盘需要注意', 'Drive needs attention');
+  $('#title').textContent = bad ? L('硬盘出现问题', 'Drive problem found') : pcOnly ? L('电脑温度过高', 'The PC is overheating') : hotOnly ? L('温度过高', 'Overheating') : L('硬盘需要注意', 'Drive needs attention');
+  if (pcOnly) { document.title = L('smartPC 电脑温度提醒', 'smartPC temperature alert'); $('#sub').textContent = L('smartPC 电脑监控', 'smartPC PC monitor'); }
   $('#list').innerHTML = p.alerts.map(a => `<div class="alert-item ${a.severity}">
       <b>${esc(a.model)}${a.letters?.length ? ` <span class="muted">(${esc(a.letters.join(' '))})</span>` : ''}</b>
       <ul>${a.text.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`).join('');

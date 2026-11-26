@@ -97,4 +97,36 @@ function rebase(state, scan) {
   return state;
 }
 
-module.exports = { check, rebase, diskKey };
+// CPU / GPU / board overheating from the sensor readings (sensors already carry level ok/warn/bad from the
+// shop's warning limits). Alerts when a part is "too hot" on two checks in a row, at most once a day per part,
+// so a short burst of full load does not pop up a warning.
+// state: { [group]: { hotCount, lastAlert } }. Returns { state, alerts }.
+const PART_NAME = () => ({ cpu: 'CPU', gpu: L('显卡', 'Graphics card'), board: L('主板', 'Motherboard'), memory: L('内存', 'Memory') });
+function checkSensors(state, sensors, now = Date.now(), lim = {}) {
+  state = { ...(state || {}) };
+  const alerts = [];
+  const byGroup = {};
+  for (const x of sensors || []) {
+    if (x.kind !== 'temp' || x.value == null) continue;
+    const g = x.group || 'board';
+    if (!byGroup[g] || x.value > byGroup[g].value) byGroup[g] = x;
+  }
+  for (const g of Object.keys(state)) if (!byGroup[g]) state[g] = { ...state[g], hotCount: 0 };
+  for (const [g, x] of Object.entries(byGroup)) {
+    const e = { hotCount: 0, lastAlert: 0, ...state[g] };
+    if (x.level === 'bad') {
+      e.hotCount += 1;
+      if (e.hotCount >= 2 && now - (e.lastAlert || 0) > HOT_REPEAT_MS) {
+        e.lastAlert = now;
+        const limit = lim[g + 'Bad'];
+        alerts.push({ key: 'sensor:' + g, model: x.part || PART_NAME()[g] || g, letters: [], kind: 'hot', pcHot: true, severity: 'warn',
+          text: [L(`${PART_NAME()[g] || g}温度 ${x.value} °C${limit ? `，超过 ${limit} °C` : ''}（${x.name}）。请检查风扇、散热膏和灰尘，长时间高温会让电脑变慢或自动关机。`,
+            `${PART_NAME()[g] || g} temperature ${x.value} °C${limit ? `, above ${limit} °C` : ''} (${x.name}). Check the fans, thermal paste and dust; running this hot slows the PC down or makes it shut off.`)] });
+      }
+    } else e.hotCount = 0;
+    state[g] = e;
+  }
+  return { state, alerts };
+}
+
+module.exports = { check, checkSensors, rebase, diskKey };
