@@ -11,6 +11,7 @@
 // Streams JSON lines like the surface scan: start, alloc, progress, done. Stops when stdin closes.
 
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX   // std::min / std::max, not the windows.h macros
 #include <windows.h>
 #include <algorithm>
 #include <atomic>
