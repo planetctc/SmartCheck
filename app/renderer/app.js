@@ -447,13 +447,29 @@ function renderSystem() {
   const hot = (s.sensors || []).filter(x => x.level !== 'ok');
   if (hot.length) notes.push(L('温度偏高：', 'Running hot: ') + hot.map(x => `${x.name} ${x.value}${x.unit}`).join(L('、', ', ')) + L('。请检查散热（风扇、散热膏、灰尘）。', '. Check cooling (fans, thermal paste, dust).'));
   if (s.batteryInfo && s.batteryInfo.wear >= 40) notes.push(L('电池损耗偏高，建议告知客户或更换电池。', 'Battery wear is high. Tell the customer or replace the battery.'));
+  // Tabs like the drive page: information, burn-in, memory test, battery.
+  const sysTabs = [['info', L('本机信息', 'Overview')], ...(on('burn') ? [['burn', L('烤机测试', 'Burn-in')]] : []),
+    ...(on('memtest') ? [['mem', L('内存测试', 'Memory test')]] : []), ...(s.batteryInfo && on('battery') ? [['bat', L('电池报告', 'Battery')]] : [])];
+  if (!sysTabs.some(t => t[0] === sysTab)) sysTab = 'info';
   $('#detail').innerHTML = `<div class="head"><h1>${L('本机信息', 'This PC')}</h1><div class="meta">${L('出机检测时一起写进 PDF 报告', 'Included in the PDF inspection report')}</div></div>
     ${notes.map(n => `<div class="banner warn">⚠ ${esc(n)}</div>`).join('')}
+    ${sysTabs.length > 1 ? `<nav class="tabs" role="tablist">${sysTabs.map(([k, t]) => `<button type="button" class="tab${k === sysTab ? ' on' : ''}" data-tab="${k}" role="tab">${t}</button>`).join('')}</nav>` : ''}
+    <div class="tab-panel" data-panel="burn"${sysTab === 'burn' ? '' : ' hidden'}><div id="burnCard"></div></div>
+    <div class="tab-panel" data-panel="mem"${sysTab === 'mem' ? '' : ' hidden'}><div id="memCard"></div></div>
+    <div class="tab-panel" data-panel="bat"${sysTab === 'bat' ? '' : ' hidden'}><div id="batCard"></div></div>
+    <div class="tab-panel" data-panel="info"${sysTab === 'info' ? '' : ' hidden'}>
     <div class="raw sys-card"><div class="attr-list">${rows.join('')}</div></div>
     ${on('sensors') ? `<div class="raw sys-card"><h3 class="sens-h">${L('传感器', 'Sensors')} <small class="muted">${L('读取当下的数值', 'Values at the time of the scan')}</small></h3>
       ${sensRows.length ? `<div class="sens-list">${sensRows.join('')}</div>` : `<p class="muted small">${L('这台电脑没有可以直接读取的传感器。', 'No sensors could be read on this PC.')}</p>`}
       ${s.canInstallPawnio && !s.pawnio ? `<div class="sens-drv"><span class="muted small">${L('CPU 温度、主板风扇和电压要装 PawnIO 驱动（有数字签名，只装一次）。', 'CPU temperatures, board fans and voltages need the PawnIO driver (signed, installed once).')}</span>
-        <button id="pawnioBtn">${L('安装传感器驱动', 'Install sensor driver')}</button><span id="pawnioMsg" class="small"></span></div>` : ''}</div>` : ''}`;
+        <button id="pawnioBtn">${L('安装传感器驱动', 'Install sensor driver')}</button><span id="pawnioMsg" class="small"></span></div>` : ''}</div>` : ''}
+    </div>`;
+  $('#detail').querySelectorAll('.tab').forEach(b => b.onclick = () => {
+    sysTab = b.dataset.tab;
+    $('#detail').querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+    $('#detail').querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== sysTab; });
+  });
+  renderBurn(); window.renderMem?.(); window.renderBat?.();
   $('#pawnioBtn')?.addEventListener('click', async () => {
     $('#pawnioBtn').disabled = true; $('#pawnioMsg').textContent = L('正在下载和安装…', 'Downloading and installing…');
     const r = await window.smartdisk.installSensors().catch(e => ({ ok: false, error: e.message }));
@@ -589,10 +605,11 @@ $('#reportForm').addEventListener('submit', async (e) => {
 // ---- settings (shop info + WhatsApp button for customer alerts) ----
 const SET_FIELDS = ['lang', 'shopName', 'shopAddress', 'shopContact', 'whatsapp', 'remoteCustomer', 'remoteUrl', 'smartaccUrl', 'smartaccUser',
   'lim_drop', 'lim_hdd', 'lim_ssd', 'lim_nvme', 'lim_cpu_w', 'lim_cpu_b', 'lim_gpu_w', 'lim_gpu_b', 'lim_board_w', 'lim_board_b'];
-const FEAT_FIELDS = ['f_bench', 'f_scan', 'f_selftest', 'f_grade', 'f_history', 'f_capacity', 'f_erase', 'f_sensors'];
+const FEAT_FIELDS = ['f_bench', 'f_scan', 'f_selftest', 'f_grade', 'f_history', 'f_capacity', 'f_erase', 'f_sensors', 'f_burn', 'f_memtest', 'f_battery'];
 const LIM_DEFAULTS = { lim_drop: 2, lim_hdd: 60, lim_ssd: 70, lim_nvme: 80, lim_cpu_w: 85, lim_cpu_b: 95, lim_gpu_w: 83, lim_gpu_b: 90, lim_board_w: 75, lim_board_b: 90 };
 let appSettings = {};
-let detailTab = 'overview';   // which tab of the drive page is open; kept when switching drives
+let detailTab = 'overview';
+let sysTab = 'info';           // tab of the This PC page   // which tab of the drive page is open; kept when switching drives
 const on = f => String(appSettings['f_' + f] ?? '1') !== '0';
 // Checkboxes for the f_* switches and the monitor; '0' when unticked so a saved "off" is kept.
 const checkVals = f => Object.fromEntries([...FEAT_FIELDS, 'monitorOn'].map(k => [k, f.elements[k].checked ? '1' : (k === 'monitorOn' ? '' : '0')]));
@@ -705,3 +722,176 @@ $('#aboutBtn').addEventListener('click', async () => {
   applyLang();
   scan();
 })();
+
+
+// ---- burn-in test (烤机) ----
+let burnState = { running: false, run: null };
+let burnLive = null;   // { elapsed, total, sample }
+const BURN_VERDICT = () => ({ pass: [L('通过', 'Pass'), 'st-ok'], warn: [L('需要注意', 'Caution'), 'st-warn'], fail: [L('不通过', 'Fail'), 'st-bad'], canceled: [L('已停止', 'Stopped'), 'muted'] });
+function burnChart(samples, gpu) {
+  const pts = (samples || []).filter(p => p.cpuTemp != null || p.gpuTemp != null);
+  if (pts.length < 2) return `<div class="muted small hist-empty">${L('温度曲线会在测试开始后出现。', 'The temperature chart appears once the test is running.')}</div>`;
+  const W = 760, H = 170, padL = 30, padR = 10, padT = 10, padB = 20, lo = 20, hi = 110;
+  const t0 = pts[0].t, t1 = Math.max(pts[pts.length - 1].t, t0 + 1);
+  const x = t => padL + (W - padL - padR) * ((t - t0) / (t1 - t0));
+  const y = v => padT + (H - padT - padB) * (1 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo));
+  const line = k => pts.filter(p => p[k] != null).map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p[k]).toFixed(1)}`).join('');
+  const lim = [[appSettings.lim_cpu_b || 95, 'lim']];
+  const grid = [40, 60, 80, 100].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" class="g"/><text x="${padL - 4}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join('');
+  const mins = Math.round((t1 - t0) / 60000);
+  return `<svg class="hist burn-chart" viewBox="0 0 ${W} ${H}">${grid}
+    ${lim.map(([v]) => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" class="lim"/>`).join('')}
+    <path d="${line('cpuTemp')}" class="cpu"/>${gpu ? `<path d="${line('gpuTemp')}" class="gpu"/>` : ''}
+    <text x="${padL}" y="${H - 4}">0</text><text x="${W - padR}" y="${H - 4}" text-anchor="end">${mins} ${L('分钟', 'min')}</text></svg>
+    <div class="legend-row small muted"><i class="lg-c"></i>CPU °C ${gpu ? `<i class="lg-g"></i>${L('显卡', 'GPU')} °C` : ''} <i class="lg-l"></i>${L('过热门槛', 'Too-hot limit')}</div>`;
+}
+function burnStat(k, v, cls = '') { return `<div class="burn-stat"><span class="k">${k}</span><span class="v ${cls}">${v}</span></div>`; }
+function renderBurn() {
+  const el = $('#burnCard');
+  if (!el) return;
+  const run = burnState.run, live = burnState.running;
+  const lv = (v, w, b) => v == null ? '' : v >= b ? 'st-bad' : v >= w ? 'st-warn' : 'st-ok';
+  const cw = +(appSettings.lim_cpu_w || 85), cb = +(appSettings.lim_cpu_b || 95), gw = +(appSettings.lim_gpu_w || 83), gb = +(appSettings.lim_gpu_b || 90);
+  let body;
+  if (live) {
+    const sm = burnLive?.sample || run?.samples?.[run.samples.length - 1] || {};
+    const el2 = burnLive?.elapsed || 0, tot = burnLive?.total || (run?.minutes || 10) * 60;
+    const mm = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    body = `<div class="burn-stats">
+        ${burnStat('CPU', sm.cpuTemp != null ? `${sm.cpuTemp} °C` : '-', lv(sm.cpuTemp, cw, cb))}
+        ${burnStat(L('CPU 频率', 'CPU clock'), sm.cpuClock ? `${sm.cpuClock} MHz` : '-')}
+        ${burnStat(L('CPU 使用率', 'CPU load'), sm.cpuLoad != null ? `${sm.cpuLoad}%` : '-')}
+        ${burnStat(L('CPU 功耗', 'CPU power'), sm.cpuPower != null ? `${sm.cpuPower} W` : '-')}
+        ${run?.gpu ? burnStat(L('显卡', 'GPU'), sm.gpuTemp != null ? `${sm.gpuTemp} °C` : '-', lv(sm.gpuTemp, gw, gb)) : ''}
+        ${burnStat(L('CPU 风扇', 'CPU fan'), sm.cpuFan ? `${sm.cpuFan} RPM` : '-')}
+      </div>
+      ${burnChart(run?.samples, run?.gpu)}
+      <div class="progress"><i style="width:${Math.min(100, el2 / tot * 100).toFixed(1)}%"></i></div>
+      <div class="tool-foot"><div class="tool-status"><span class="spin"></span>${L(`烤机中 ${mm(el2)} / ${mm(tot)}`, `Burning in ${mm(el2)} / ${mm(tot)}`)}</div><button class="cancel" id="burnStop">${L('停止', 'Stop')}</button></div>`;
+  } else {
+    const r = run?.result;
+    const [vt, vc] = r ? (BURN_VERDICT()[r.verdict] || BURN_VERDICT().canceled) : [];
+    const last = r ? `<div class="burn-res"><div class="burn-verdict ${vc}">${vt}</div>
+        <div class="small muted">${new Date(run.finishedAt || run.startedAt).toLocaleString()} · ${Math.round((r.seconds || 0) / 60)} ${L('分钟', 'min')}${run.gpu ? L(' · CPU + 显卡', ' · CPU + GPU') : ' · CPU'}</div>
+        <div class="burn-stats">
+          ${burnStat(L('CPU 最高', 'CPU max'), r.cpuMax != null ? `${r.cpuMax} °C` : '-', lv(r.cpuMax, cw, cb))}
+          ${run.gpu ? burnStat(L('显卡最高', 'GPU max'), r.gpuMax != null ? `${r.gpuMax} °C` : '-', lv(r.gpuMax, gw, gb)) : ''}
+          ${burnStat(L('CPU 频率', 'CPU clock'), r.clockStart ? `${r.clockStart} → ${r.clockEnd || '-'} MHz` : '-', r.throttle ? 'st-warn' : '')}
+          ${burnStat(L('最高功耗', 'Max power'), r.cpuPowerMax != null ? `${r.cpuPowerMax} W` : '-')}
+        </div>
+        ${r.reasons?.length ? `<ul class="reasons burn-reasons">${r.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : r.verdict === 'pass' ? `<div class="small st-ok">${L('温度正常，没有降频，过程中没有死机。', 'Temperatures normal, no throttling, no freeze.')}</div>` : ''}
+        ${r.noTemp ? `<div class="small muted">${L('没有读到 CPU 温度：请在「本机信息」安装传感器驱动后再测。', 'No CPU temperature was read: install the sensor driver on the Overview tab and test again.')}</div>` : ''}
+        ${burnChart(run.samples, run.gpu)}</div>` : '';
+    body = `<div class="small muted">${L('让 CPU（和显卡）满载一段时间，看散热够不够、会不会降频或死机。测试中电脑会变热、风扇变大声，请不要同时做其他测试。',
+      'Runs the CPU (and graphics card) at full load to check cooling, throttling and stability. The PC gets hot and loud; do not run other tests at the same time.')}</div>
+      <div class="burn-opts">
+        <label>${L('时间', 'Duration')} <select id="burnMin">${[5, 10, 20, 30].map(m => `<option value="${m}"${m === 10 ? ' selected' : ''}>${m} ${L('分钟', 'min')}</option>`).join('')}</select></label>
+        <label class="check"><input type="checkbox" checked disabled> CPU</label>
+        <label class="check"><input type="checkbox" id="burnGpu" checked> ${L('显卡', 'Graphics card')}</label>
+        <button class="go primary" id="burnGo">${L('开始烤机', 'Start burn-in')}</button>
+      </div><div id="burnMsg" class="small"></div>${last}`;
+  }
+  el.innerHTML = `<div class="tool burn-tool"><h3>${L('烤机测试', 'Burn-in test')} <small class="muted">${L('结果会印进检测报告', 'printed on the inspection report')}</small></h3>${body}</div>`;
+  $('#burnStop')?.addEventListener('click', () => window.smartdisk.burnStop());
+  $('#burnGo')?.addEventListener('click', async () => {
+    const r = await window.smartdisk.burnStart({ minutes: +$('#burnMin').value, cpu: true, gpu: $('#burnGpu').checked });
+    if (!r?.ok) $('#burnMsg').textContent = r?.error === 'task' ? L('请先等硬盘测试完成。', 'Wait for the drive test to finish first.') : L('已经在烤机中。', 'A burn-in is already running.');
+  });
+}
+window.smartdisk.onBurn?.((ev) => {
+  if (ev.type === 'start') { burnState = { running: true, run: ev.run }; burnLive = { elapsed: 0, total: ev.run.minutes * 60 }; }
+  else if (ev.type === 'sample') { if (burnState.run) burnState.run.samples = [...(burnState.run.samples || []), ev.sample].slice(-400); burnLive = ev; }
+  else if (ev.type === 'done') { burnState = { running: false, run: ev.run }; burnLive = null; }
+  document.querySelector('.tab[data-tab="burn"]')?.classList.toggle('busy', burnState.running);
+  renderBurn();
+});
+(async () => { try { burnState = (await window.smartdisk.burnState?.()) || burnState; } catch {} })();
+
+// ---- memory test ----
+let memState = { running: false, last: null, full: null }, memLive = null;
+const gbOf = b => (b ? Math.round(b / 1024 ** 3 * 10) / 10 : 0);
+window.renderMem = function renderMem() {
+  const el = $('#memCard');
+  if (!el) return;
+  const last = memState.last, full = memState.full;
+  let body;
+  if (memState.running) {
+    body = `<div class="progress"><i style="width:${memLive?.pct || 0}%"></i></div>
+      <div class="tool-foot"><div class="tool-status"><span class="spin"></span>${memLive?.type === 'alloc' ? L(`正在占用内存 ${memLive.n}/${memLive.of}…`, `Reserving memory ${memLive.n}/${memLive.of}…`) : L(`测试中 ${memLive?.pct || 0}% · 错误 ${memLive?.errors || 0}`, `Testing ${memLive?.pct || 0}% · errors ${memLive?.errors || 0}`)}</div><button class="cancel" id="memStop">${L('停止', 'Stop')}</button></div>`;
+  } else {
+    const lastHtml = last ? `<div class="burn-res"><div class="burn-verdict ${last.errors ? 'st-bad' : 'st-ok'}">${last.errors ? L(`发现 ${last.errors} 个错误`, `${last.errors} errors found`) : L('没有错误', 'No errors')}</div>
+        <div class="small muted">${new Date(last.finishedAt).toLocaleString()} · ${L(`测了 ${gbOf(last.testedBytes)} GB / 共 ${gbOf(last.totalBytes)} GB`, `${gbOf(last.testedBytes)} GB of ${gbOf(last.totalBytes)} GB tested`)} · ${L(`${last.passes} 遍`, `${last.passes} pass(es)`)}</div>
+        ${last.errors ? `<div class="small st-bad">${L('内存不稳定或有坏的内存条。可以关掉 XMP 再测，或一条一条测找出坏的那条。', 'Memory is unstable or a stick is bad. Turn off XMP and test again, or test one stick at a time to find the bad one.')}</div>` : ''}</div>` : '';
+    const fullHtml = full ? `<div class="small ${full.ok ? 'st-ok' : 'st-bad'}">${L('上次 Windows 内存诊断：', 'Last Windows Memory Diagnostic: ')}${full.ok ? L('没有错误', 'no errors') : L('发现错误', 'errors found')} · ${new Date(full.time).toLocaleString()}</div>` : '';
+    body = `<div class="small muted">${L('快速测试：在 Windows 里把大部分空闲内存写满不同的资料再读回来检查，几分钟就好，不用重启。Windows 自己正在用的内存测不到，要测全部请用完整测试。',
+      'Quick test: fills most of the free memory with patterns and reads them back, a few minutes, no restart. Memory Windows is using cannot be tested; use the full test for all of it.')}</div>
+      <div class="burn-opts">
+        <label>${L('遍数', 'Passes')} <select id="memPass">${[1, 2, 3].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
+        <button id="memFull">${L('完整测试（需重启）', 'Full test (restart)')}</button>
+        <button class="go primary" id="memGo">${L('开始快速测试', 'Start quick test')}</button>
+      </div><div id="memMsg" class="small"></div>${fullHtml}${lastHtml}`;
+  }
+  el.innerHTML = `<div class="tool burn-tool"><h3>${L('内存测试', 'Memory test')} <small class="muted">${L('结果会印进检测报告', 'printed on the inspection report')}</small></h3>${body}</div>`;
+  $('#memStop')?.addEventListener('click', () => window.smartdisk.memStop());
+  $('#memGo')?.addEventListener('click', async () => {
+    const r = await window.smartdisk.memStart({ passes: +$('#memPass').value });
+    if (!r?.ok) $('#memMsg').textContent = r?.error === 'burn' ? L('请先等烤机测试完成。', 'Wait for the burn-in to finish first.') : L('已经在测试中。', 'A test is already running.');
+  });
+  $('#memFull')?.addEventListener('click', async () => {
+    const r = await window.smartdisk.memFull();
+    if (r?.ok) $('#memMsg').textContent = r.restart ? L('5 秒后重启…', 'Restarting in 5 seconds…') : L('下次重启时会自动做内存诊断。', 'The memory diagnostic runs at the next restart.');
+    else if (!r?.canceled) $('#memMsg').textContent = L('无法排程：', 'Could not schedule: ') + (r?.error || '');
+  });
+};
+window.smartdisk.onMem?.((ev) => {
+  if (ev.type === 'start') { memState.running = true; memLive = { pct: 0 }; }
+  else if (ev.type === 'done') { memState = { ...memState, running: false, last: ev.result.status === 'canceled' ? memState.last : ev.result }; memLive = null; }
+  else memLive = ev;
+  document.querySelector('.tab[data-tab="mem"]')?.classList.toggle('busy', memState.running);
+  window.renderMem();
+});
+(async () => { try { memState = (await window.smartdisk.memState?.()) || memState; window.renderMem(); } catch {} })();
+
+// ---- full battery report ----
+let batState = null, batLoading = false;
+function batChart(h) {
+  const pts = (h || []).filter(x => x.full && x.design);
+  if (pts.length < 2) return '';
+  const W = 760, H = 150, padL = 34, padR = 10, padT = 10, padB = 20;
+  const x = i => padL + (W - padL - padR) * (i / (pts.length - 1));
+  const y = v => padT + (H - padT - padB) * (1 - Math.max(0, Math.min(100, v)) / 100);
+  const pct = p => p.full / p.design * 100;
+  const grid = [0, 50, 100].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" class="g"/><text x="${padL - 4}" y="${y(v) + 4}" text-anchor="end">${v}%</text>`).join('');
+  return `<svg class="hist" viewBox="0 0 ${W} ${H}">${grid}<path d="${pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(pct(p)).toFixed(1)}`).join('')}" class="health"/>
+    <text x="${padL}" y="${H - 4}">${esc(pts[0].date)}</text><text x="${W - padR}" y="${H - 4}" text-anchor="end">${esc(pts[pts.length - 1].date)}</text></svg>
+    <div class="legend-row small muted"><i class="lg-h"></i>${L('满电容量 / 设计容量', 'Full charge / design capacity')}</div>`;
+}
+window.renderBat = async function renderBat(force) {
+  const el = $('#batCard');
+  if (!el) return;
+  if ((!batState || force) && !batLoading) {
+    batLoading = true;
+    el.innerHTML = `<div class="tool"><h3>${L('电池报告', 'Battery report')}</h3><div class="tool-status"><span class="spin"></span>${L('正在读取 Windows 电池报告…', 'Reading the Windows battery report…')}</div></div>`;
+    try { batState = await window.smartdisk.batteryRead(); } catch (e) { batState = { ok: false, error: e.message }; }
+    batLoading = false;
+  }
+  if (!batState) return;
+  const r = batState.report;
+  const hm = m => (m == null ? '-' : L(`${Math.floor(m / 60)} 小时 ${m % 60} 分`, `${Math.floor(m / 60)} h ${m % 60} min`));
+  const wearCls = r?.wear == null ? '' : r.wear >= 40 ? 'st-bad' : r.wear >= 20 ? 'st-warn' : 'st-ok';
+  el.innerHTML = `<div class="tool burn-tool"><h3>${L('电池报告', 'Battery report')} <small class="muted">${r ? esc([r.maker, r.name, r.chemistry].filter(Boolean).join(' · ')) : ''}</small></h3>
+    ${!batState.ok ? `<div class="small muted">${L('读不到电池报告：', 'Could not read the battery report: ')}${esc(batState.error || '')}</div>` : `
+    <div class="burn-stats">
+      ${burnStat(L('电池损耗', 'Wear'), r.wear != null ? `${r.wear}%` : '-', wearCls)}
+      ${burnStat(L('充电次数', 'Cycles'), r.cycles != null ? num(r.cycles) : '-')}
+      ${burnStat(L('满电容量', 'Full charge'), r.full ? `${num(r.full)} mWh` : '-')}
+      ${burnStat(L('设计容量', 'Design'), r.design ? `${num(r.design)} mWh` : '-')}
+      ${burnStat(L('现在满电可用', 'Runtime now'), hm(r.runtimeNow))}
+      ${burnStat(L('新电池时', 'When new'), hm(r.runtimeNew))}
+    </div>
+    ${batChart(r.history)}
+    <div class="tool-foot"><span class="small muted">${L('资料来自 Windows 自己的电池记录（powercfg）。', "From Windows' own battery records (powercfg).")}</span>
+      <span class="btns">${batState.hasHtml ? `<button id="batHtml">${L('打开完整报告', 'Open full report')}</button>` : ''}<button id="batAgain">${L('重新读取', 'Read again')}</button></span></div>`}</div>`;
+  $('#batHtml')?.addEventListener('click', () => window.smartdisk.batteryHtml());
+  $('#batAgain')?.addEventListener('click', () => window.renderBat(true));
+};

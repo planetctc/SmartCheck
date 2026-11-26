@@ -45,22 +45,44 @@ namespace SmartDiskSensors
             foreach (var sub in h.SubHardware) Hardware(o, sub, parent ?? h.Name);
         }
 
-        static int Main()
+        static string Snapshot(Computer computer)
+        {
+            var o = new StringBuilder("[");
+            foreach (var h in computer.Hardware) Hardware(o, h, null);
+            return o.Append(']').ToString();
+        }
+
+        // No arguments: one reading. "--watch 2000": a reading every 2000 ms (one JSON line each) until stdin closes
+        // or the process is ended; used by the burn-in test so the driver is opened only once.
+        static int Main(string[] args)
         {
             var computer = new Computer { IsCpuEnabled = true, IsGpuEnabled = true, IsMotherboardEnabled = true, IsMemoryEnabled = true, IsControllerEnabled = true };
+            int watch = 0;
+            if (args.Length >= 2 && args[0] == "--watch") int.TryParse(args[1], out watch);
             try
             {
+                Console.OutputEncoding = Encoding.UTF8;
                 computer.Open();
                 var v = new UpdateVisitor();
                 computer.Accept(v);
                 Thread.Sleep(1000);   // loads and some clocks need two samples
                 computer.Accept(v);
-                var o = new StringBuilder("[");
-                foreach (var h in computer.Hardware) Hardware(o, h, null);
-                o.Append(']');
-                Console.OutputEncoding = Encoding.UTF8;
-                Console.WriteLine("{\"ok\":true,\"sensors\":" + o + "}");
-                return 0;
+                if (watch <= 0)
+                {
+                    Console.WriteLine("{\"ok\":true,\"sensors\":" + Snapshot(computer) + "}");
+                    return 0;
+                }
+                watch = Math.Max(500, Math.Min(60000, watch));
+                // Stop when the parent closes our stdin (smartPC quit or the test ended).
+                var stdin = new Thread(() => { try { while (Console.In.ReadLine() != null) { } } catch { } Environment.Exit(0); }) { IsBackground = true };
+                stdin.Start();
+                while (true)
+                {
+                    Console.WriteLine("{\"ok\":true,\"t\":" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + ",\"sensors\":" + Snapshot(computer) + "}");
+                    Console.Out.Flush();
+                    Thread.Sleep(watch);
+                    computer.Accept(v);
+                }
             }
             catch (Exception e)
             {
