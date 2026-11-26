@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('smartdisk', {
   remoteTest: () => ipcRenderer.invoke('remote:test'),
   smartaccState: () => ipcRenderer.invoke('smartacc:state'),
   installSensors: () => ipcRenderer.invoke('sensors:install'),
+  liveSensors: (on) => ipcRenderer.invoke('sensors:live', on),
+  onLiveSensors: (fn) => ipcRenderer.on('sensors:live', (_e, list) => fn(list)),
   alertData: () => ipcRenderer.invoke('alert:get'),
   alertAction: (a) => ipcRenderer.invoke('alert:action', a),
   onAlert: (fn) => ipcRenderer.on('alert:data', (_e, d) => fn(d)),

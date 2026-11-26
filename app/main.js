@@ -316,6 +316,7 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.on('closed', () => {
     win = null;
+    liveWanted = false; liveStop();
     // Nobody can see or stop them any more: stop the burn-in and the memory test instead of loading the PC unseen.
     if (burn) burnFinish('canceled');
     if (mem) mem.stop();
@@ -575,6 +576,53 @@ ipcMain.handle('sensors:install', async () => {
   if (r.response !== 0) return { ok: false, canceled: true };
   return sensors.installPawnIO();
 });
+// ---- live sensors on the hardware page ----
+// While the hardware page (or the temperature step) is open, smartdisk-sensors.exe --watch reads every 2 s and the
+// values go to the window. During a burn-in the burn-in's own watcher feeds this too, so only one reader runs.
+let liveWanted = false, liveProc = null, liveMockT = null;
+function liveSend(raw) {
+  if (!liveWanted || !win || win.isDestroyed()) return;
+  const lim = limits.limitsOf(loadSettings());
+  win.webContents.send('sensors:live', sensors.toSensors(raw).map(x => ({ ...x, level: sensorLevel(x, lim) })));
+}
+function liveStop() {
+  clearInterval(liveMockT); liveMockT = null;
+  const p = liveProc; liveProc = null;
+  if (p) { try { p.stdin.end(); } catch {} setTimeout(() => { try { p.kill(); } catch {} }, 1500); }
+}
+function liveStart() {
+  if (liveProc || liveMockT || burn || !limits.featureOn(loadSettings(), 'sensors')) return;
+  if (process.env.SMARTDISK_MOCK === '1') {   // demo values that move a little
+    const j = v => Math.round((v + (Math.random() - 0.5) * v * 0.08) * 10) / 10;
+    const tick = () => liveSend([
+      { hw: 'Cpu', part: 'Intel Core i5-14400F', type: 'Temperature', name: 'CPU Package', value: j(44) },
+      { hw: 'Cpu', part: 'Intel Core i5-14400F', type: 'Power', name: 'CPU Package', value: j(12) },
+      { hw: 'Cpu', part: 'Intel Core i5-14400F', type: 'Load', name: 'CPU Total', value: j(6) },
+      { hw: 'GpuNvidia', part: 'NVIDIA GeForce RTX 4060', type: 'Temperature', name: 'GPU Core', value: j(38) },
+      { hw: 'SuperIO', part: 'Nuvoton NCT6798D', type: 'Fan', name: 'Fan #1', value: Math.round(j(1050)) },
+      { hw: 'SuperIO', part: 'Nuvoton NCT6798D', type: 'Temperature', name: 'System', value: j(33) },
+    ]);
+    tick(); liveMockT = setInterval(tick, 2000);
+    return;
+  }
+  const exe = sensorsPath();
+  if (process.platform !== 'win32' || !fs.existsSync(exe)) return;
+  try {
+    const p = liveProc = spawn(exe, ['--watch', '2000'], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    let buf = '';
+    p.stdout.on('data', d => {
+      buf += d.toString();
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        try { const j = JSON.parse(line); if (j.ok) liveSend(j.sensors || []); } catch {}
+      }
+    });
+    p.on('error', () => {});
+    p.on('exit', () => { if (liveProc === p) liveProc = null; });
+  } catch { liveProc = null; }
+}
+ipcMain.handle('sensors:live', (_e, on) => { liveWanted = !!on; if (liveWanted) liveStart(); else liveStop(); return true; });
 ipcMain.handle('report:make', (_e, form) => makeReport(form || {}));
 ipcMain.handle('task:start', (_e, a) => startTask(['bench', 'capacity', 'erase'].includes(a?.kind) ? a.kind : 'scan', Number(a?.disk), a?.letter));
 ipcMain.handle('task:cancel', () => { if (task) task.cancel(); return true; });
@@ -610,6 +658,7 @@ function burnStart(opts = {}) {
   const run = { status: 'running', startedAt: new Date().toISOString(), minutes, cpu: opts.cpu !== false, gpu: !!opts.gpu, level: opts.level === 'std' ? 'std' : 'high', samples: [], threads: 0 };
   const mock = process.env.SMARTDISK_MOCK === '1';
   const b = burn = { run, latest: {}, hasSensors: false };
+  liveStop();   // the burn-in's watcher takes over
   // Sensors.
   const exe = sensorsPath();
   if (!mock && fs.existsSync(exe)) {
@@ -621,7 +670,7 @@ function burnStart(opts = {}) {
         let i;
         while ((i = buf.indexOf('\n')) >= 0) {
           const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-          try { const j = JSON.parse(line); if (j.ok) { b.latest = burnin.pick(j.sensors || []); b.hasSensors = true; } } catch {}
+          try { const j = JSON.parse(line); if (j.ok) { b.latest = burnin.pick(j.sensors || []); b.hasSensors = true; liveSend(j.sensors || []); } } catch {}
         }
       });
       b.proc.on('error', () => {});
@@ -677,6 +726,7 @@ function burnFinish(status) {
   burnSave(run);
   testResults.pc = { ...testResults.pc, burn: run };
   burnSend({ type: 'done', run });
+  if (liveWanted) setTimeout(liveStart, 1600);
 }
 
 ipcMain.handle('burn:start', (_e, o) => burnStart(o || {}));

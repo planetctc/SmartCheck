@@ -362,3 +362,8 @@ svg.burn-chart .lim { stroke: var(--bad); stroke-dasharray: 3 4; opacity: .5; }
 .ttile button { margin: 0; flex: none; }
 .pill { white-space: nowrap; }
 @media (max-width: 1150px) { .home-hero { grid-template-columns: 220px minmax(0, 1fr); } .home-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .drow { grid-template-columns: 36px minmax(0, 1fr) 46px; } .drow .hb { display: none; } .drow .gl { width: 36px; height: 36px; } }
+/* 0.19.1 live sensors */
+.sens-max { margin-left: 8px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #16a36a; margin: 0 6px 1px 4px; animation: livePulse 2s infinite; }
+@keyframes livePulse { 50% { opacity: .35; } }
+.sens-h button.mini { font-size: 11px; padding: 2px 8px; margin-left: 8px; border-radius: 6px; }

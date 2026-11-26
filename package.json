@@ -1,7 +1,7 @@
 {
   "name": "smartdisk",
   "productName": "smartCheck",
-  "version": "0.19.0",
+  "version": "0.19.1",
   "description": "smartCheck - 电脑健康检测",
   "main": "app/main.js",
   "private": true,
