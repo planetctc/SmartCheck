@@ -607,7 +607,7 @@ function burnStart(opts = {}) {
   if (task) return { ok: false, error: 'task' };
   if (mem) return { ok: false, error: 'mem' };
   const minutes = Math.max(1, Math.min(60, Math.round(Number(opts.minutes) || 10)));
-  const run = { status: 'running', startedAt: new Date().toISOString(), minutes, cpu: opts.cpu !== false, gpu: !!opts.gpu, samples: [], threads: 0 };
+  const run = { status: 'running', startedAt: new Date().toISOString(), minutes, cpu: opts.cpu !== false, gpu: !!opts.gpu, level: opts.level === 'std' ? 'std' : 'high', samples: [], threads: 0 };
   const mock = process.env.SMARTDISK_MOCK === '1';
   const b = burn = { run, latest: {}, hasSensors: false };
   // Sensors.
@@ -628,7 +628,17 @@ function burnStart(opts = {}) {
     } catch {}
   }
   // Load.
-  if (run.cpu) { b.cpu = burnin.startCpuLoad(); run.threads = b.cpu.threads; }
+  // High intensity: the helper's AVX2/FMA load (like Prime95 small FFT). Standard, or no helper: worker threads in Node.
+  const helper = helperPath();
+  if (run.cpu && run.level === 'high' && !mock && fs.existsSync(helper)) {
+    try {
+      const p = spawn(helper, ['stress'], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+      p.stdout.once('data', d => { try { const j = JSON.parse(String(d).split('\n')[0]); run.engine = j.mode; run.threads = j.threads; } catch {} });
+      p.on('error', () => {});
+      b.cpu = { stop: () => { try { p.stdin.end(); } catch {} setTimeout(() => { try { p.kill(); } catch {} }, 1500); } };
+    } catch { b.cpu = null; }
+  }
+  if (run.cpu && !b.cpu) { b.cpu = burnin.startCpuLoad(); run.threads = b.cpu.threads; run.engine = 'js'; if (run.level === 'high' && !mock) run.level = 'std'; }
   if (run.gpu) {
     b.gpuWin = new BrowserWindow({ width: 640, height: 380, title: L('smartCheck 显卡烤机', 'smartCheck GPU burn-in'), icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
       webPreferences: { contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
@@ -690,18 +700,43 @@ ipcMain.handle('mem:start', (_e, o) => {
     send({ type: 'start', planBytes: 12 * 1024 ** 3, totalBytes: 16 * 1024 ** 3 });
     return { ok: true };
   }
-  mem = memtest.quickTest({ passes, onEvent: ev => {
-    if (ev.type === 'start') Object.assign(acc, { planBytes: ev.planBytes, totalBytes: ev.totalBytes });
+  const onEvent = ev => {
+    if (ev.type === 'start') Object.assign(acc, { planBytes: ev.planBytes, totalBytes: ev.totalBytes, lockedBytes: ev.lockedBytes });
     if (ev.type === 'progress') Object.assign(acc, { pct: ev.pct, errors: ev.errors });
     if (ev.type === 'done') {
+      if (!mem) return;   // only one end per test
       mem = null;
-      Object.assign(acc, { status: ev.stopped ? 'canceled' : ev.error ? 'error' : 'done', errors: ev.errors, bad: ev.bad, testedBytes: ev.testedBytes, error: ev.error, finishedAt: new Date().toISOString() });
+      Object.assign(acc, { status: ev.stopped ? 'canceled' : ev.error ? 'error' : 'done', errors: ev.errors, bad: ev.bad, testedBytes: ev.testedBytes, lockedBytes: ev.lockedBytes ?? acc.lockedBytes, error: ev.error, finishedAt: new Date().toISOString() });
       if (acc.status === 'done') testResults.pc = { ...testResults.pc, mem: acc };
       send({ type: 'done', result: acc });
       return;
     }
     send(ev);
-  } });
+  };
+  // The helper locks the memory it tests in RAM and runs MemTest86-style patterns on all cores; without it, the
+  // slower in-Node test (which Windows may page out under pressure).
+  const exe = helperPath();
+  if (fs.existsSync(exe)) {
+    acc.engine = 'native';
+    const child = spawn(exe, ['memtest', String(passes)], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    let buf = '', gotDone = false;
+    child.stdout.on('data', chunk => {
+      buf += chunk.toString('utf8');
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        try { const ev = JSON.parse(line); if (ev.type === 'done') gotDone = true; onEvent(ev); } catch {}
+      }
+    });
+    child.on('error', e => onEvent({ type: 'done', errors: 0, error: String(e.message || e), testedBytes: 0 }));
+    child.on('close', code => { if (!gotDone) onEvent({ type: 'done', errors: 0, error: `helper stopped (${code})`, testedBytes: 0, stopped: stopAsked }); });
+    let stopAsked = false;
+    send({ type: 'start', planBytes: 0, totalBytes: os.totalmem() });   // show "running" while the helper reserves memory
+    mem = { stop: () => { stopAsked = true; try { child.stdin.end(); } catch {} setTimeout(() => { try { child.kill(); } catch {} }, 5000); } };
+    return { ok: true };
+  }
+  acc.engine = 'js';
+  mem = memtest.quickTest({ passes, onEvent });
   return { ok: true };
 });
 ipcMain.handle('mem:stop', () => { if (mem) mem.stop(); return true; });

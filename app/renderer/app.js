@@ -719,7 +719,7 @@ async function autoNext() {
   const items = pcItems(), todo = k => items.find(x => x.key === k)?.state === 'todo';
   if (todo('burn')) {
     checkStep = 'burn'; render();
-    const r = await window.smartdisk.burnStart({ minutes: 10, cpu: true, gpu: true });
+    const r = await window.smartdisk.burnStart({ minutes: 10, cpu: true, gpu: true, level: burnLevelPref() });
     if (!r?.ok) { autoRun = false; render(); }
     return;
   }
@@ -1010,6 +1010,8 @@ function burnChart(samples, gpu) {
     <text x="${padL}" y="${H - 4}">0</text><text x="${W - padR}" y="${H - 4}" text-anchor="end">${mins} ${L('分钟', 'min')}</text></svg>
     <div class="legend-row small muted"><i class="lg-c"></i>CPU °C ${gpu ? `<i class="lg-g"></i>${L('显卡', 'GPU')} °C` : ''} <i class="lg-l"></i>${L('过热门槛', 'Too-hot limit')}</div>`;
 }
+function burnLevelPref() { try { return localStorage.getItem('burnLevel') === 'std' ? 'std' : 'high'; } catch { return 'high'; } }
+const burnLevelText = r => (r?.level === 'std' ? L('标准', 'standard') : r?.level === 'high' ? L('高强度', 'high intensity') : '');
 function burnStat(k, v, cls = '') { return `<div class="burn-stat"><span class="k">${k}</span><span class="v ${cls}">${v}</span></div>`; }
 function renderBurn() {
   const el = $('#burnCard');
@@ -1037,7 +1039,7 @@ function renderBurn() {
     const r = run?.result;
     const [vt, vc] = r ? (BURN_VERDICT()[r.verdict] || BURN_VERDICT().canceled) : [];
     const last = r ? `<div class="burn-res"><div class="burn-verdict ${vc}">${vt}</div>
-        <div class="small muted">${new Date(run.finishedAt || run.startedAt).toLocaleString()} · ${Math.round((r.seconds || 0) / 60)} ${L('分钟', 'min')}${run.gpu ? L(' · CPU + 显卡', ' · CPU + GPU') : ' · CPU'}</div>
+        <div class="small muted">${new Date(run.finishedAt || run.startedAt).toLocaleString()} · ${Math.round((r.seconds || 0) / 60)} ${L('分钟', 'min')}${run.gpu ? L(' · CPU + 显卡', ' · CPU + GPU') : ' · CPU'}${burnLevelText(run) ? ' · ' + burnLevelText(run) : ''}</div>
         <div class="burn-stats">
           ${burnStat(L('CPU 最高', 'CPU max'), r.cpuMax != null ? `${r.cpuMax} °C` : '-', lv(r.cpuMax, cw, cb))}
           ${run.gpu ? burnStat(L('显卡最高', 'GPU max'), r.gpuMax != null ? `${r.gpuMax} °C` : '-', lv(r.gpuMax, gw, gb)) : ''}
@@ -1051,7 +1053,7 @@ function renderBurn() {
       'Runs the CPU (and graphics card) at full load to check cooling, throttling and stability. The PC gets hot and loud; do not run other tests at the same time.')}</div>
       <div class="burn-opts">
         <label>${L('时间', 'Duration')} <select id="burnMin">${[5, 10, 20, 30].map(m => `<option value="${m}"${m === 10 ? ' selected' : ''}>${m} ${L('分钟', 'min')}</option>`).join('')}</select></label>
-        <label class="check"><input type="checkbox" checked disabled> CPU</label>
+        <label>${L('强度', 'Intensity')} <select id="burnLevel"><option value="high"${burnLevelPref() === 'high' ? ' selected' : ''}>${L('高强度（接近 Prime95）', 'High (like Prime95)')}</option><option value="std"${burnLevelPref() === 'std' ? ' selected' : ''}>${L('标准', 'Standard')}</option></select></label>
         <label class="check"><input type="checkbox" id="burnGpu" checked> ${L('显卡', 'Graphics card')}</label>
         <button class="go primary" id="burnGo">${L('开始烤机', 'Start burn-in')}</button>
       </div><div id="burnMsg" class="small"></div>${last}`;
@@ -1059,7 +1061,8 @@ function renderBurn() {
   el.innerHTML = `<div class="tool burn-tool"><h3>${L('烤机测试', 'Burn-in test')} <small class="muted">${L('结果会印进检测报告', 'printed on the inspection report')}</small></h3>${body}</div>`;
   $('#burnStop')?.addEventListener('click', () => window.smartdisk.burnStop());
   $('#burnGo')?.addEventListener('click', async () => {
-    const r = await window.smartdisk.burnStart({ minutes: +$('#burnMin').value, cpu: true, gpu: $('#burnGpu').checked });
+    const level = $('#burnLevel').value; try { localStorage.setItem('burnLevel', level); } catch {}
+    const r = await window.smartdisk.burnStart({ minutes: +$('#burnMin').value, cpu: true, gpu: $('#burnGpu').checked, level });
     if (!r?.ok) $('#burnMsg').textContent = r?.error === 'task' ? L('请先等硬盘测试完成。', 'Wait for the drive test to finish first.') : r?.error === 'mem' ? L('请先等内存测试完成。', 'Wait for the memory test to finish first.') : L('已经在烤机中。', 'A burn-in is already running.');
   });
 }
@@ -1084,14 +1087,14 @@ window.renderMem = function renderMem() {
   let body;
   if (memState.running) {
     body = `<div class="progress"><i style="width:${memLive?.pct || 0}%"></i></div>
-      <div class="tool-foot"><div class="tool-status"><span class="spin"></span>${memLive?.type === 'alloc' ? L(`正在占用内存 ${memLive.n}/${memLive.of}…`, `Reserving memory ${memLive.n}/${memLive.of}…`) : L(`测试中 ${memLive?.pct || 0}% · 错误 ${memLive?.errors || 0}`, `Testing ${memLive?.pct || 0}% · errors ${memLive?.errors || 0}`)}</div><button class="cancel" id="memStop">${L('停止', 'Stop')}</button></div>`;
+      <div class="tool-foot"><div class="tool-status"><span class="spin"></span>${memLive?.type === 'alloc' ? L(`正在占用内存 ${memLive.n}/${memLive.of}…`, `Reserving memory ${memLive.n}/${memLive.of}…`) : L(`测试中 ${memLive?.pct || 0}% · 第 ${memLive?.pass || 1} 遍${memLive?.test ? ' · ' + esc(memLive.test) : ''} · 错误 ${memLive?.errors || 0}`, `Testing ${memLive?.pct || 0}% · pass ${memLive?.pass || 1}${memLive?.test ? ' · ' + esc(memLive.test) : ''} · errors ${memLive?.errors || 0}`)}</div><button class="cancel" id="memStop">${L('停止', 'Stop')}</button></div>`;
   } else {
     const lastHtml = last ? `<div class="burn-res"><div class="burn-verdict ${last.errors ? 'st-bad' : 'st-ok'}">${last.errors ? L(`发现 ${last.errors} 个错误`, `${last.errors} errors found`) : L('没有错误', 'No errors')}</div>
         <div class="small muted">${new Date(last.finishedAt).toLocaleString()} · ${L(`测了 ${gbOf(last.testedBytes)} GB / 共 ${gbOf(last.totalBytes)} GB`, `${gbOf(last.testedBytes)} GB of ${gbOf(last.totalBytes)} GB tested`)} · ${L(`${last.passes} 遍`, `${last.passes} pass(es)`)}</div>
         ${last.errors ? `<div class="small st-bad">${L('内存不稳定或有坏的内存条。可以关掉 XMP 再测，或一条一条测找出坏的那条。', 'Memory is unstable or a stick is bad. Turn off XMP and test again, or test one stick at a time to find the bad one.')}</div>` : ''}</div>` : '';
     const fullHtml = full ? `<div class="small ${full.ok ? 'st-ok' : 'st-bad'}">${L('上次 Windows 内存诊断：', 'Last Windows Memory Diagnostic: ')}${full.ok ? L('没有错误', 'no errors') : L('发现错误', 'errors found')} · ${new Date(full.time).toLocaleString()}</div>` : '';
-    body = `<div class="small muted">${L('快速测试：在 Windows 里把大部分空闲内存写满不同的资料再读回来检查，几分钟就好，不用重启。Windows 自己正在用的内存测不到，要测全部请用完整测试。',
-      'Quick test: fills most of the free memory with patterns and reads them back, a few minutes, no restart. Memory Windows is using cannot be tested; use the full test for all of it.')}</div>
+    body = `<div class="small muted">${L('快速测试：把大部分空闲内存锁在实体内存里，用全部核心跑 14 种测试（地址、移动反转、随机数，和 MemTest86 同类），不用重启。Windows 自己正在用的内存测不到，要测全部请用完整测试。',
+      'Quick test: locks most of the free memory in RAM and runs 14 tests on all cores (address, moving inversions, random numbers, like MemTest86), no restart. Memory Windows is using cannot be tested; use the full test for all of it.')}</div>
       <div class="burn-opts">
         <label>${L('遍数', 'Passes')} <select id="memPass">${[1, 2, 3].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
         <button id="memFull">${L('完整测试（需重启）', 'Full test (restart)')}</button>
