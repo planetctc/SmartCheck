@@ -408,7 +408,7 @@ function showAlerts(alerts, scan) {
   const first = pendingAlerts[0];
   if (Notification.isSupported()) {
     const n = new Notification({
-      title: L('smartPC 硬盘提醒', 'smartPC drive alert'),
+      title: first.pcHot ? L('smartPC 电脑温度提醒', 'smartPC temperature alert') : L('smartPC 硬盘提醒', 'smartPC drive alert'),
       body: `${first.model}${first.letters.length ? ' (' + first.letters.join(' ') + ')' : ''}: ${first.text[0]}`,
       icon: path.join(__dirname, 'icon.png'),
     });
@@ -439,7 +439,8 @@ function alertAction(action) {
   if (action === 'whatsapp' && whatsappNumber()) {
     const a = pendingAlerts;
     const shop = loadSettings().shopName || '';
-    const lines = [L(`你好${shop ? ' ' + shop : ''}，smartPC 提醒我的硬盘有问题：`, `Hi${shop ? ' ' + shop : ''}, smartPC warned me about a problem with my drive:`),
+    const what = a.every(x => x.pcHot) ? L('电脑温度过高', 'my PC is overheating') : L('硬盘有问题', 'a problem with my drive');
+    const lines = [L(`你好${shop ? ' ' + shop : ''}，smartPC 提醒我的${what}：`, `Hi${shop ? ' ' + shop : ''}, smartPC warned me about ${what}:`),
       ...a.map(x => `- ${x.model}${x.letters.length ? ' (' + x.letters.join(' ') + ')' : ''}: ${x.text.join(L('；', '; '))}`),
       `${L('电脑', 'PC')}: ${a[0]?.pc || os.hostname()}`];
     shell.openExternal(`https://wa.me/${whatsappNumber()}?text=${encodeURIComponent(lines.join('\n'))}`);
@@ -455,12 +456,21 @@ async function monitorCheck(manual) {
   if (!scan.disks?.length) return;
   history.record(historyFile(), scan);
   const m = loadMonitor();
-  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan, Date.now(), limits.limitsOf(loadSettings()));
-  saveMonitor({ ...m, disks: state.disks });
+  const st = loadSettings(), lim = limits.limitsOf(st);
+  const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan, Date.now(), lim);
+  // CPU / GPU / board temperatures too (the shop sets the limits in Settings → 警告门槛).
+  let sensState = m.sensors || {}, sensAlerts = [], sens = [];
+  if (limits.featureOn(st, 'sensors')) {
+    try { sens = ((await sensors.read(sensorsPath())) || []).map(x => ({ ...x, level: sensorLevel(x, lim) })); } catch {}
+    ({ state: sensState, alerts: sensAlerts } = monitor.checkSensors(sensState, sens, Date.now(), lim));
+  }
+  saveMonitor({ ...m, disks: state.disks, sensors: sensState });
   remoteSend(scan, alerts);
-  if (alerts.length) showAlerts(alerts, scan);
+  const all = [...alerts, ...sensAlerts];
+  if (all.length) showAlerts(all, scan);
   else if (manual) {
-    const worst = scan.disks.filter(d => d.summary?.health != null).map(d => `${d.model}：${d.summary.health}%`).join('\n');
+    const temps = ['cpu', 'gpu'].map(g => sens.filter(x => x.group === g && x.kind === 'temp').sort((a, b) => b.value - a.value)[0]).filter(Boolean).map(x => `${x.name}：${x.value} °C`);
+    const worst = [...scan.disks.filter(d => d.summary?.health != null).map(d => `${d.model}：${d.summary.health}%`), ...temps].join('\n');
     dialog.showMessageBox({ type: 'info', title: 'smartPC', message: L('硬盘状况和安装时一样，没有新问题。', 'No new problems since the drives were first checked.'), detail: worst });
   }
   updateTrayTip(scan);
