@@ -73,7 +73,7 @@ namespace SmartDiskSensors
                     return 0;
                 }
                 watch = Math.Max(500, Math.Min(60000, watch));
-                // Stop when the parent closes our stdin (smartPC quit or the test ended).
+                // Stop when the parent closes our stdin (smartCheck quit or the test ended).
                 var stdin = new Thread(() => { try { while (Console.In.ReadLine() != null) { } } catch { } Environment.Exit(0); }) { IsBackground = true };
                 stdin.Start();
                 while (true)

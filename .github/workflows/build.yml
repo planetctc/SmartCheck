@@ -1,9 +1,9 @@
 name: Build Windows installer
 
 # - Pull requests / pushes to main: build the installer and keep it as an Actions artifact.
-# - Publish a release to planetctc/smartdisk-releases (installed copies pick it up as an online update):
+# - Publish a release to planetctc/smartCheck-releases (installed copies pick it up as an online update):
 #   Actions -> "Build Windows installer" -> Run workflow -> tick "publish", or push a tag like v0.3.0.
-#   Needs the repository secret RELEASES_TOKEN (a token that can write to smartdisk-releases).
+#   Needs the repository secret RELEASES_TOKEN (a token that can write to smartCheck-releases).
 
 on:
   push:
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "发布新版本到 smartdisk-releases（自动更新）"
+        description: "发布新版本到 smartCheck-releases（自动更新）"
         type: boolean
         default: false
 
@@ -47,5 +47,5 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
-          name: smartPC-Setup
-          path: dist/smartPC-Setup-*.exe
+          name: smartCheck-Setup
+          path: dist/smartCheck-Setup-*.exe

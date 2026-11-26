@@ -1,5 +1,5 @@
 // Background health monitor for customer PCs: compares each scan with the baseline recorded the first time a
-// disk was seen (normally when the shop installed smartPC) and returns alerts for the customer.
+// disk was seen (normally when the shop installed smartCheck) and returns alerts for the customer.
 // Pure logic, no Electron: main.js stores the state in %ProgramData%\smartDisk\monitor.json.
 
 const { L } = require('../renderer/i18n');

@@ -1,4 +1,4 @@
-// smartPC helper: SMART self-test (the drive tests itself; nothing is written to user data).
+// smartCheck helper: SMART self-test (the drive tests itself; nothing is written to user data).
 //
 //   smartdisk-helper.exe selftest <diskIndex> short|long|abort   -> start (or stop) a test, prints one JSON line
 //   smartdisk-helper.exe selftest <diskIndex> status             -> progress and the latest result, one JSON line

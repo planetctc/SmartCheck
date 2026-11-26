@@ -19,7 +19,7 @@ function applyLang() {
 }
 
 let data = null;
-let current = 0;   // disk index, or -1 for the "本机信息" page
+let current = -1;  // drive index on a drive page, -1 on every other page
 
 function esc(v) { return String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function size(bytes) { if (!bytes) return '-'; return bytes >= 1e12 ? (bytes / 1e12).toFixed(2) + ' TB' : Math.round(bytes / 1e9) + ' GB'; }
@@ -285,7 +285,7 @@ window.smartdisk.onUpdate?.((u) => {
   el.className = 'small ' + (u.phase === 'error' ? 'warn-txt' : 'upd-note');
   el.textContent = u.phase === 'start' ? L('正在下载更新…', 'Downloading the update…')
     : u.phase === 'progress' ? L(`正在下载更新… ${u.pct}%`, `Downloading the update… ${u.pct}%`)
-    : u.phase === 'ready' ? L(`新版本 ${u.version || ''} 已下载好，关闭 smartPC 时会自动安装。`, `Version ${u.version || ''} is downloaded and installs when smartPC closes.`)
+    : u.phase === 'ready' ? L(`新版本 ${u.version || ''} 已下载好，关闭 smartCheck 时会自动安装。`, `Version ${u.version || ''} is downloaded and installs when smartCheck closes.`)
     : L('更新下载失败，请稍后再试。', 'The update download failed. Try again later.');
 });
 window.smartdisk.onTask?.((ev) => {
@@ -315,7 +315,7 @@ function selfTestCard(d) {
   const st = selfTests[diskKey(d)];
   let body;
   if (!st) body = `<div class="muted small">${L('读取中…', 'Reading…')}</div>`;
-  else if (!st.ok) body = `<div class="muted small">${L('这块硬盘或 Windows 不支持从这里启动自检。', 'This drive (or Windows) does not let smartPC start a self-test.')}</div>`;
+  else if (!st.ok) body = `<div class="muted small">${L('这块硬盘或 Windows 不支持从这里启动自检。', 'This drive (or Windows) does not let smartCheck start a self-test.')}</div>`;
   else if (st.running) body = `<div class="progress"><i style="width:${st.progress || 0}%"></i></div><div class="small">${L(`自检进行中 ${st.progress || 0}%，可以继续用电脑。`, `Self-test running ${st.progress || 0}%. You can keep using the PC.`)}</div>`;
   else if (st.last) {
     const [t, c] = ST_RESULT()[st.last.result] || ST_RESULT().unknown;
@@ -395,27 +395,186 @@ function historyCard(d) {
 }
 
 // ---- rendering ----
+// Pages (0.18.0): 总览 home, 出机检测 check (step by step), 硬件与温度 pc, 烤机 burn, 内存 mem, 电池 bat, and one page per drive.
+// `current` is the drive index on a drive page and -1 everywhere else (the drive tools check current >= 0).
+let page = 'home';
+let checkStep = 'hw';
+let autoRun = false;   // 出机检测「一键跑完剩下的」: burn-in, then memory test, then the report step
+const ICON = {
+  home: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
+  check: '<path d="M9 5h11M9 12h11M9 19h11"/><path d="M3 5l1.5 1.5L7 4M3 12l1.5 1.5L7 11M3 19l1.5 1.5L7 18"/>',
+  pc: '<rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/>',
+  burn: '<path d="M12 2c3 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-5 3-7 1 2 2 3 3 3 0-3-1-5 0-7z"/>',
+  mem: '<rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 17v3M10 17v3M14 17v3M18 17v3"/>',
+  bat: '<rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2"/>',
+  disk: '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/>',
+  temp: '<path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/>',
+  win: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/>',
+  report: '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/>',
+};
+const icon = k => `<svg class="ico" viewBox="0 0 24 24">${ICON[k] || ''}</svg>`;
+const hasSys = () => data?.system && !data.system.error;
+const hasBat = () => hasSys() && !!data.system.batteryInfo && on('battery');
+
+function pages() {
+  return [['home', L('总览', 'Overview')], ['check', L('出机检测', 'Pre-delivery check')], ...(hasSys() ? [['pc', on('sensors') ? L('硬件与温度', 'Hardware & temps') : L('硬件资料', 'Hardware')]] : []),
+    ...(on('burn') ? [['burn', L('烤机测试', 'Burn-in')]] : []), ...(on('memtest') ? [['mem', L('内存测试', 'Memory test')]] : []), ...(hasBat() ? [['bat', L('电池', 'Battery')]] : [])];
+}
+function go(p, disk) {
+  page = p; current = p === 'disk' ? disk : -1;
+  render();
+}
+
 function renderList() {
+  const items = pcItems();
+  const warnOf = k => { const it = items.find(x => x.key === k); return it && (it.state === 'warn' || it.state === 'bad') ? `<span class="nav-dot ${it.state}"></span>` : ''; };
+  const live = k => (k === 'burn' && burnState.running) || (k === 'mem' && memState.running) || (k === 'check' && autoRun) ? '<span class="spin"></span>' : '';
+  $('#mainNav').innerHTML = pages().map(([k, t]) => `<button class="nav ${page === k ? 'on' : ''}" data-p="${k}">${icon(k)}<span>${t}</span>${live(k) || warnOf({ pc: 'temp', burn: 'burn', mem: 'mem', bat: 'bat' }[k])}</button>`).join('');
   $('#diskList').innerHTML = data.disks.map((d, i) => {
     const s = d.summary;
-    return `<button class="disk ${i === current ? 'active' : ''}" data-i="${i}">
+    return `<button class="disk ${page === 'disk' && i === current ? 'active' : ''}" data-i="${i}">
       <span class="bar" style="background:${color(s.status)}"></span>
       <span><div class="m">${esc(d.model) || L('未知型号', 'Unknown model')}</div><div class="s">${letters(d) ? esc(letters(d)) + ' · ' : ''}${esc(busText(d.bus))} · ${size(d.sizeBytes)}${s.temperatureC != null ? ' · ' + s.temperatureC + '°C' : ''}</div></span>
       <span class="pct" style="color:${color(s.status)}">${s.health != null ? s.health + '%' : '--'}</span>
     </button>`;
   }).join('');
-  const sys = data.system;
-  const sysBtn = sys && !sys.error ? `<button class="disk sys ${current === -1 ? 'active' : ''}" data-i="-1">
-      <span class="bar" style="background:var(--accent)"></span>
-      <span><div class="m">${L('本机信息', 'This PC')}</div><div class="s">${esc(sys.cpu?.[0]?.name?.replace(/\(R\)|\(TM\)|CPU|\s+@.*$/g, '').replace(/\s+/g, ' ') || '')}</div></span>
-      <span class="pct" style="color:${sys.activated === false ? 'var(--warn)' : 'var(--muted)'}">${sys.memTotalGB ? sys.memTotalGB + 'G' : ''}</span>
-    </button>` : '';
-  $('#diskList').insertAdjacentHTML('afterbegin', sysBtn);
-  document.querySelectorAll('.disk').forEach(b => b.onclick = () => { current = +b.dataset.i; render(); });
+  document.querySelectorAll('#mainNav .nav').forEach(b => b.onclick = () => go(b.dataset.p));
+  document.querySelectorAll('#diskList .disk').forEach(b => b.onclick = () => go('disk', +b.dataset.i));
 }
 
-function renderSystem() {
-  const s = data.system;
+// ---- what the overview and the check list show: one entry per area of the PC ----
+// state: ok | warn | bad | todo (not tested yet) | none (cannot be read)
+const RANKS = { ok: 0, todo: 1, none: 1, warn: 2, bad: 3 };
+function pcItems() {
+  if (!data) return [];
+  const s = hasSys() ? data.system : null, items = [];
+  const disks = data.disks || [];
+  const known = disks.filter(d => d.smartOk && d.summary?.health != null);
+  const worst = known.reduce((w, d) => (RANKS[{ good: 'ok', warn: 'warn', bad: 'bad' }[d.summary.status] || 'ok'] > RANKS[w.st] ? { st: { good: 'ok', warn: 'warn', bad: 'bad' }[d.summary.status], d } : w), { st: 'ok', d: null });
+  const scanBad = disks.find(d => tests[diskKey(d)]?.scan?.bad);
+  const dState = scanBad ? 'bad' : known.length ? worst.st : 'none';
+  const dProblem = scanBad || worst.d;
+  items.push({ key: 'disk', icon: 'disk', title: L('硬盘', 'Drives'), state: dState,
+    value: { ok: L('良好', 'Good'), warn: L('注意', 'Caution'), bad: L('有问题', 'Problem'), none: L('读不到', 'No data') }[dState],
+    detail: dProblem && dState !== 'ok' ? `${letters(dProblem) || dProblem.model} · ${scanBad ? L('扫描发现坏道', 'bad sectors found') : (dProblem.summary.reasons?.[0] || L(`健康度 ${dProblem.summary.health}%`, `health ${dProblem.summary.health}%`))}`
+      : L(`${disks.length} 块`, `${disks.length} drive(s)`) + (known.length ? L(`，最低 ${Math.min(...known.map(d => d.summary.health))}%`, `, lowest ${Math.min(...known.map(d => d.summary.health))}%`) : ''),
+    go: () => (dProblem ? go('disk', disks.indexOf(dProblem)) : disks.length ? go('disk', 0) : null) });
+  if (s && on('sensors')) {
+    const temps = (s.sensors || []).filter(x => x.kind === 'temp');
+    const top = g => temps.filter(x => x.group === g).sort((a, b) => b.value - a.value)[0];
+    const lv = temps.reduce((w, x) => (x.level === 'bad' ? 'bad' : x.level === 'warn' && w !== 'bad' ? 'warn' : w), 'ok');
+    const st = temps.length ? lv : 'none';
+    items.push({ key: 'temp', icon: 'temp', title: L('温度', 'Temperatures'), state: st,
+      value: { ok: L('正常', 'Normal'), warn: L('偏高', 'High'), bad: L('过热', 'Too hot'), none: L('读不到', 'No data') }[st],
+      detail: [top('cpu') && `CPU ${top('cpu').value} °C`, top('gpu') && `${L('显卡', 'GPU')} ${top('gpu').value} °C`].filter(Boolean).join(' · ') || (temps.length ? `${temps[0].name} ${temps[0].value} °C` : L('要装传感器驱动', 'Needs the sensor driver')),
+      go: () => go('pc') });
+  }
+  if (on('burn')) {
+    const r = burnState.run?.result, v = burnState.running ? 'run' : r?.verdict;
+    const st = v === 'pass' ? 'ok' : v === 'warn' ? 'warn' : v === 'fail' ? 'bad' : 'todo';
+    items.push({ key: 'burn', icon: 'burn', title: L('烤机', 'Burn-in'), state: st, running: burnState.running,
+      value: burnState.running ? L('进行中', 'Running') : { ok: L('通过', 'Pass'), warn: L('注意', 'Caution'), bad: L('不通过', 'Fail'), todo: L('未测', 'Not run') }[st],
+      detail: r && !burnState.running && v !== 'canceled' ? `${Math.round((r.seconds || 0) / 60)} ${L('分钟', 'min')}${r.cpuMax != null ? ` · CPU ${L('最高', 'max')} ${r.cpuMax} °C` : ''}` : L('CPU 和显卡满载，看散热和稳定', 'Full load: cooling and stability'),
+      go: () => go('burn') });
+  }
+  if (on('memtest')) {
+    const m = memState.last, st = memState.running ? 'todo' : !m ? 'todo' : m.errors ? 'bad' : 'ok';
+    items.push({ key: 'mem', icon: 'mem', title: L('内存', 'Memory'), state: st, running: memState.running,
+      value: memState.running ? L('进行中', 'Running') : !m ? L('未测', 'Not run') : m.errors ? L(`${m.errors} 个错误`, `${m.errors} errors`) : L('没有错误', 'No errors'),
+      detail: m && !memState.running ? L(`测了 ${gbOf(m.testedBytes)} GB`, `${gbOf(m.testedBytes)} GB tested`) : (s?.memTotalGB ? `${s.memTotalGB} GB` : ''),
+      go: () => go('mem') });
+  }
+  if (s) {
+    const st = s.activated === false ? 'warn' : s.activated ? 'ok' : 'none';
+    items.push({ key: 'win', icon: 'win', title: 'Windows', state: st, value: { ok: L('已激活', 'Activated'), warn: L('未激活', 'Not activated'), none: L('不明', 'Unknown') }[st],
+      detail: [s.activation?.channel, s.os?.build && `Build ${s.os.build}`].filter(Boolean).join(' · '), go: () => go('pc') });
+  }
+  if (hasBat()) {
+    const w = (batState?.report?.wear) ?? s.batteryInfo.wear;
+    const st = w == null ? 'none' : w >= 40 ? 'bad' : w >= 20 ? 'warn' : 'ok';
+    items.push({ key: 'bat', icon: 'bat', title: L('电池', 'Battery'), state: st, value: w == null ? '-' : L(`损耗 ${w}%`, `Wear ${w}%`),
+      detail: s.batteryInfo.cycles ? L(`充电 ${num(s.batteryInfo.cycles)} 次`, `${num(s.batteryInfo.cycles)} cycles`) : '', go: () => go('bat') });
+  }
+  return items;
+}
+const ST_CLS = { ok: 'st-ok', warn: 'st-warn', bad: 'st-bad', todo: 'muted', none: 'muted' };
+
+function summaryOf(items) {
+  const bad = items.filter(x => x.state === 'bad'), warn = items.filter(x => x.state === 'warn'), todo = items.filter(x => x.state === 'todo');
+  const okN = items.filter(x => x.state === 'ok').length;
+  const st = bad.length ? 'bad' : warn.length ? 'warn' : 'good';
+  const head = bad.length ? L(`有 ${bad.length} 项有问题`, `${bad.length} problem(s) found`) + (warn.length ? L(`，${warn.length} 项要注意`, `, ${warn.length} to watch`) : '') : warn.length ? L(`有 ${warn.length} 项需要注意`, `${warn.length} item(s) need attention`)
+    : todo.length ? L(`目前正常，还有 ${todo.length} 项没测`, `Fine so far, ${todo.length} test(s) not run`) : L('这台电脑状况良好', 'This PC is in good shape');
+  const first = [...bad, ...warn][0];
+  return { st, head, okN, total: items.length, sub: first ? `${first.title}${L('：', ': ')}${first.detail || first.value}` : todo.length ? L('按「开始出机检测」一步一步做完。', 'Use "Pre-delivery check" to run the rest step by step.') : L('所有项目都正常。', 'Everything checked out.') };
+}
+
+function scoreRing(sm) {
+  const r = 50, c = 2 * Math.PI * r, p = sm.total ? sm.okN / sm.total : 0;
+  return `<svg class="ring" viewBox="0 0 120 120"><circle cx="60" cy="60" r="${r}" fill="none" class="track" stroke-width="12"/>
+    <circle cx="60" cy="60" r="${r}" fill="none" stroke="${color(sm.st)}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${c * p} ${c}" transform="rotate(-90 60 60)"/>
+    <text x="60" y="60" text-anchor="middle" class="v">${sm.okN}/${sm.total}</text><text x="60" y="80" text-anchor="middle" class="l">${L('项正常', 'OK')}</text></svg>`;
+}
+
+function itemCard(it) {
+  return `<button class="cat" data-k="${it.key}"><span class="ic">${icon(it.icon)}</span><b>${esc(it.title)}</b><span class="v ${ST_CLS[it.state]}">${it.running ? '<span class="spin"></span>' : ''}${esc(it.value)}</span><span class="d">${esc(it.detail || '')}</span></button>`;
+}
+
+function diskRows() {
+  return (data.disks || []).map((d, i) => {
+    const s = d.summary, g = s.grade?.grade;
+    return `<button class="drow" data-i="${i}"><span class="gl" style="background:${g ? color(GRADE_CLS[g]) : 'var(--unknown)'}">${g || '?'}</span>
+      <span><div class="m">${esc(d.model) || L('未知型号', 'Unknown model')}</div><div class="s">${[letters(d), busText(d.bus), size(d.sizeBytes), s.temperatureC != null ? s.temperatureC + ' °C' : '', d.smartOk ? '' : L('读不到 SMART', 'no SMART')].filter(Boolean).map(esc).join(' · ')}</div></span>
+      <span class="hb"><i style="width:${s.health || 0}%;background:${color(s.status)}"></i></span><span class="p" style="color:${color(s.status)}">${s.health != null ? s.health + '%' : '--'}</span></button>`;
+  }).join('') || `<div class="muted small">${L('没有找到硬盘。', 'No drives found.')}</div>`;
+}
+function bindDiskRows(root) { root.querySelectorAll('.drow').forEach(b => b.onclick = () => go('disk', +b.dataset.i)); }
+
+function sysLine() {
+  const s = hasSys() ? data.system : null;
+  if (!s) return data.computer?.name || '';
+  const cpu = s.cpu?.[0]?.name?.replace(/\(R\)|\(TM\)|CPU|\s+@.*$/g, '').replace(/\s+/g, ' ').trim();
+  return [s.computer?.name, cpu, s.memTotalGB && `${s.memTotalGB} GB`, s.gpu?.[0]?.name, s.os?.caption?.replace(/^Microsoft /, '')].filter(Boolean).join(' · ');
+}
+
+const shortTime = t => new Date(t).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+function testTile(k, title, line, state, value, label) {
+  return `<div class="ttile"><div><b>${title}${value ? `<span class="pill ${ST_CLS[state] || 'muted'}">${esc(value)}</span>` : ''}</b><div class="r">${esc(line)}</div></div><button data-go="${k}">${label}</button></div>`;
+}
+
+function renderHome() {
+  const items = pcItems(), sm = summaryOf(items);
+  const br = burnState.run, mm = memState.last;
+  const tiles = [
+    on('burn') ? testTile('burn', L('烤机测试', 'Burn-in'), burnState.running ? L('进行中…', 'Running…') : br?.result ? `${shortTime(br.finishedAt || br.startedAt)} · ${Math.round((br.result.seconds || 0) / 60)} ${L('分钟', 'min')}` : L('CPU 和显卡满载 5 到 30 分钟', 'CPU and GPU full load, 5 to 30 min'),
+      items.find(x => x.key === 'burn')?.state, items.find(x => x.key === 'burn')?.value, burnState.running ? L('查看', 'View') : br ? L('再测一次', 'Run again') : L('开始', 'Start')) : '',
+    on('memtest') ? testTile('mem', L('内存测试', 'Memory test'), memState.running ? L('进行中…', 'Running…') : mm ? `${shortTime(mm.finishedAt)} · ${L(`${mm.passes} 遍`, `${mm.passes} pass(es)`)}` : L('快速测试，几分钟，不用重启', 'Quick test, a few minutes, no restart'),
+      items.find(x => x.key === 'mem')?.state, items.find(x => x.key === 'mem')?.value, memState.running ? L('查看', 'View') : mm ? L('再测一次', 'Run again') : L('开始', 'Start')) : '',
+    (on('bench') || on('scan')) && data.disks.length ? testTile('disktests', L('硬盘测速 / 扫描', 'Drive speed / scan'), L('在每块硬盘的「检测工具」分页', 'On each drive\'s Tests tab'), '', '', L('打开', 'Open')) : '',
+    hasBat() ? testTile('bat', L('电池报告', 'Battery report'), L('损耗、充电次数、续航', 'Wear, cycles, runtime'), items.find(x => x.key === 'bat')?.state, items.find(x => x.key === 'bat')?.value, L('打开', 'Open')) : '',
+  ].filter(Boolean);
+  $('#detail').innerHTML = `<div class="page-top"><div><h1>${L('这台电脑', 'This PC')}</h1><div class="meta">${esc(sysLine())}</div></div>
+      <div class="act"><button id="homeReport">${L('生成检测报告', 'Inspection report')}</button><button class="primary" id="homeCheck">${L('开始出机检测', 'Start pre-delivery check')}</button></div></div>
+    <section class="home-hero">
+      <div class="card score">${scoreRing(sm)}<h2 style="color:${color(sm.st)}">${esc(sm.head)}</h2><p class="muted small">${esc(sm.sub)}</p></div>
+      <div class="card"><h3>${L('检查项目', 'Checks')} <small class="muted">${L('点任何一项看详细', 'Click one for details')}</small></h3><div class="cats">${items.map(itemCard).join('')}</div></div>
+    </section>
+    <section class="home-row">
+      <div class="card"><h3>${L('硬盘', 'Drives')} <small class="muted">${L('评级和健康度', 'Grade and health')}</small></h3><div class="drows">${diskRows()}</div></div>
+      ${tiles.length ? `<div class="card"><h3>${L('测试', 'Tests')} <small class="muted">${L('结果会印进检测报告', 'Printed on the inspection report')}</small></h3><div class="ttiles">${tiles.join('')}</div></div>` : ''}
+    </section>`;
+  $('#detail').querySelectorAll('.cat').forEach(b => b.onclick = () => items.find(x => x.key === b.dataset.k)?.go?.());
+  $('#detail').querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
+    const k = b.dataset.go;
+    if (k === 'disktests') { detailTab = 'tests'; go('disk', Math.max(0, data.disks.findIndex(d => d.isSystem))); } else go(k);
+  });
+  bindDiskRows($('#detail'));
+  $('#homeCheck').onclick = () => go('check');
+  $('#homeReport').onclick = () => $('#reportBtn').click();
+}
+
+// ---- 硬件与温度 ----
+function sysRowsHtml(s) {
   const row = (k, v, cls = '') => `<div class="attr nv"><span class="n">${k}</span><span class="r ${cls}">${v}</span></div>`;
   const rows = [
     row(L('电脑', 'Computer'), esc([s.computer?.manufacturer, s.computer?.model].filter(Boolean).join(' ')) + (s.computer?.name ? ` · ${esc(s.computer.name)}` : '')),
@@ -430,46 +589,36 @@ function renderSystem() {
     const w = s.batteryInfo.wear;
     rows.push(row(L('电池损耗', 'Battery wear'), `${w}% <small class="muted">${L(`（设计 ${num(s.batteryInfo.design)} mWh / 目前满电 ${num(s.batteryInfo.full)} mWh）`, `(design ${num(s.batteryInfo.design)} mWh / full now ${num(s.batteryInfo.full)} mWh)`)}${s.batteryInfo.cycles ? L(` · 充电 ${num(s.batteryInfo.cycles)} 次`, ` · ${num(s.batteryInfo.cycles)} cycles`) : ''}</small>`, w >= 40 ? 'st-bad' : w >= 20 ? 'st-warn' : 'st-ok'));
   }
+  return `<div class="raw sys-card"><div class="attr-list">${rows.join('')}</div></div>`;
+}
+function sensorsHtml(s) {
+  if (!on('sensors')) return '';
   const LV = { ok: 'st-ok', warn: 'st-warn', bad: 'st-bad' };
   // Sensors grouped by chip (the part name once as a heading), two columns of name / value.
   const G_ORDER = { cpu: 0, gpu: 1, memory: 2, board: 3 }, K_ORDER = { temp: 0, fan: 1, power: 2, load: 3, volt: 4 };
   const sens = [...(s.sensors || [])].sort((a, b) => (G_ORDER[a.group] ?? 9) - (G_ORDER[b.group] ?? 9) || String(a.part || '').localeCompare(String(b.part || '')) || (K_ORDER[a.kind] ?? 9) - (K_ORDER[b.kind] ?? 9));
-  const sensGroups = [];
+  const groups = [];
   for (const x of sens) {
     const k = x.part || '';
-    if (!sensGroups.length || sensGroups[sensGroups.length - 1].part !== k) sensGroups.push({ part: k, items: [] });
-    sensGroups[sensGroups.length - 1].items.push(x);
+    if (!groups.length || groups[groups.length - 1].part !== k) groups.push({ part: k, items: [] });
+    groups[groups.length - 1].items.push(x);
   }
-  const sensRows = sensGroups.map(g => `${g.part ? `<div class="sens-part">${esc(g.part)}</div>` : ''}<div class="sens-grid">${g.items.map(x =>
+  const rows = groups.map(g => `${g.part ? `<div class="sens-part">${esc(g.part)}</div>` : ''}<div class="sens-grid">${g.items.map(x =>
     `<div class="sens-item"><span class="n">${esc(x.name)}</span><span class="v ${x.kind === 'temp' ? LV[x.level] || '' : ''}">${esc(Number(x.value).toLocaleString(undefined, { maximumFractionDigits: x.kind === 'volt' ? 3 : 1 }))} ${esc(x.unit)}</span></div>`).join('')}</div>`);
+  return `<div class="raw sys-card"><h3 class="sens-h">${L('传感器', 'Sensors')} <small class="muted">${L('读取当下的数值', 'Values at the time of the scan')}</small></h3>
+    ${rows.length ? `<div class="sens-list">${rows.join('')}</div>` : `<p class="muted small">${L('这台电脑没有可以直接读取的传感器。', 'No sensors could be read on this PC.')}</p>`}
+    ${s.canInstallPawnio && !s.pawnio ? `<div class="sens-drv"><span class="muted small">${L('CPU 温度、主板风扇和电压要装 PawnIO 驱动（有数字签名，只装一次）。', 'CPU temperatures, board fans and voltages need the PawnIO driver (signed, installed once).')}</span>
+      <button id="pawnioBtn">${L('安装传感器驱动', 'Install sensor driver')}</button><span id="pawnioMsg" class="small"></span></div>` : ''}</div>`;
+}
+function sysNotes(s) {
   const notes = [];
   if (s.activated === false) notes.push(L('Windows 尚未激活，出机前请激活。', 'Windows is not activated. Activate it before delivery.'));
   const hot = (s.sensors || []).filter(x => x.level !== 'ok');
   if (hot.length) notes.push(L('温度偏高：', 'Running hot: ') + hot.map(x => `${x.name} ${x.value}${x.unit}`).join(L('、', ', ')) + L('。请检查散热（风扇、散热膏、灰尘）。', '. Check cooling (fans, thermal paste, dust).'));
   if (s.batteryInfo && s.batteryInfo.wear >= 40) notes.push(L('电池损耗偏高，建议告知客户或更换电池。', 'Battery wear is high. Tell the customer or replace the battery.'));
-  // Tabs like the drive page: information, burn-in, memory test, battery.
-  const sysTabs = [['info', L('本机信息', 'Overview')], ...(on('burn') ? [['burn', L('烤机测试', 'Burn-in')]] : []),
-    ...(on('memtest') ? [['mem', L('内存测试', 'Memory test')]] : []), ...(s.batteryInfo && on('battery') ? [['bat', L('电池报告', 'Battery')]] : [])];
-  if (!sysTabs.some(t => t[0] === sysTab)) sysTab = 'info';
-  $('#detail').innerHTML = `<div class="head"><h1>${L('本机信息', 'This PC')}</h1><div class="meta">${L('出机检测时一起写进 PDF 报告', 'Included in the PDF inspection report')}</div></div>
-    ${notes.map(n => `<div class="banner warn">⚠ ${esc(n)}</div>`).join('')}
-    ${sysTabs.length > 1 ? `<nav class="tabs" role="tablist">${sysTabs.map(([k, t]) => `<button type="button" class="tab${k === sysTab ? ' on' : ''}" data-tab="${k}" role="tab">${t}</button>`).join('')}</nav>` : ''}
-    <div class="tab-panel" data-panel="burn"${sysTab === 'burn' ? '' : ' hidden'}><div id="burnCard"></div></div>
-    <div class="tab-panel" data-panel="mem"${sysTab === 'mem' ? '' : ' hidden'}><div id="memCard"></div></div>
-    <div class="tab-panel" data-panel="bat"${sysTab === 'bat' ? '' : ' hidden'}><div id="batCard"></div></div>
-    <div class="tab-panel" data-panel="info"${sysTab === 'info' ? '' : ' hidden'}>
-    <div class="raw sys-card"><div class="attr-list">${rows.join('')}</div></div>
-    ${on('sensors') ? `<div class="raw sys-card"><h3 class="sens-h">${L('传感器', 'Sensors')} <small class="muted">${L('读取当下的数值', 'Values at the time of the scan')}</small></h3>
-      ${sensRows.length ? `<div class="sens-list">${sensRows.join('')}</div>` : `<p class="muted small">${L('这台电脑没有可以直接读取的传感器。', 'No sensors could be read on this PC.')}</p>`}
-      ${s.canInstallPawnio && !s.pawnio ? `<div class="sens-drv"><span class="muted small">${L('CPU 温度、主板风扇和电压要装 PawnIO 驱动（有数字签名，只装一次）。', 'CPU temperatures, board fans and voltages need the PawnIO driver (signed, installed once).')}</span>
-        <button id="pawnioBtn">${L('安装传感器驱动', 'Install sensor driver')}</button><span id="pawnioMsg" class="small"></span></div>` : ''}</div>` : ''}
-    </div>`;
-  $('#detail').querySelectorAll('.tab').forEach(b => b.onclick = () => {
-    sysTab = b.dataset.tab;
-    $('#detail').querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
-    $('#detail').querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== sysTab; });
-  });
-  renderBurn(); window.renderMem?.(); window.renderBat?.();
+  return notes.map(n => `<div class="banner warn">⚠ ${esc(n)}</div>`).join('');
+}
+function bindPawnio() {
   $('#pawnioBtn')?.addEventListener('click', async () => {
     $('#pawnioBtn').disabled = true; $('#pawnioMsg').textContent = L('正在下载和安装…', 'Downloading and installing…');
     const r = await window.smartdisk.installSensors().catch(e => ({ ok: false, error: e.message }));
@@ -477,9 +626,130 @@ function renderSystem() {
     else { $('#pawnioMsg').textContent = r.canceled ? '' : L('安装失败：', 'Install failed: ') + (r.error || ''); $('#pawnioBtn').disabled = false; }
   });
 }
+const pageHead = (t, sub) => `<div class="head"><h1>${t}</h1>${sub ? `<div class="meta">${sub}</div>` : ''}</div>`;
+function renderPc() {
+  const s = data.system;
+  $('#detail').innerHTML = pageHead(on('sensors') ? L('硬件与温度', 'Hardware & temperatures') : L('硬件资料', 'Hardware'), L('出机检测时一起写进 PDF 报告', 'Included in the PDF inspection report'))
+    + sysNotes(s) + `<div class="pc-cols">${sysRowsHtml(s)}${sensorsHtml(s)}</div>`;
+  bindPawnio();
+}
+function renderTestPage(k) {
+  const id = { burn: 'burnCard', mem: 'memCard', bat: 'batCard' }[k];
+  const t = { burn: L('烤机测试', 'Burn-in test'), mem: L('内存测试', 'Memory test'), bat: L('电池报告', 'Battery report') }[k];
+  $('#detail').innerHTML = pageHead(t, L('结果会印进检测报告', 'Printed on the inspection report')) + `<div id="${id}"></div>`;
+  if (k === 'burn') renderBurn(); else if (k === 'mem') window.renderMem(); else window.renderBat();
+}
+
+// ---- 出机检测: step by step, each step done or not, one button runs the long tests in a row ----
+function checkSteps() {
+  const items = pcItems(), it = k => items.find(x => x.key === k);
+  const s = hasSys() ? data.system : null;
+  const steps = [];
+  if (s) steps.push({ k: 'hw', title: L('硬件资料', 'Hardware'), sub: [s.cpu?.[0]?.name?.replace(/\(R\)|\(TM\)|CPU|\s+@.*$/g, '').replace(/\s+/g, ' ').trim(), s.memTotalGB && `${s.memTotalGB} GB`].filter(Boolean).join(' · '), state: 'ok', auto: true });
+  if (it('win')) steps.push({ k: 'win', title: L('Windows 激活', 'Windows activation'), sub: it('win').value, state: it('win').state, auto: true });
+  steps.push({ k: 'disk', title: L('硬盘健康', 'Drive health'), sub: it('disk').detail, state: it('disk').state, auto: true });
+  if (it('temp')) steps.push({ k: 'temp', title: L('温度与风扇', 'Temps & fans'), sub: it('temp').detail, state: it('temp').state, auto: true });
+  if (it('bat')) steps.push({ k: 'bat', title: L('电池', 'Battery'), sub: it('bat').value, state: it('bat').state, auto: true });
+  if (it('burn')) steps.push({ k: 'burn', title: L('烤机测试', 'Burn-in'), sub: burnState.running ? burnProgressText() : it('burn').value, state: it('burn').state, running: burnState.running });
+  if (it('mem')) steps.push({ k: 'mem', title: L('内存测试', 'Memory test'), sub: memState.running ? L(`进行中 ${memLive?.pct || 0}%`, `Running ${memLive?.pct || 0}%`) : it('mem').value, state: it('mem').state, running: memState.running });
+  steps.push({ k: 'report', title: L('检测报告', 'Report'), sub: L('PDF · 客户签名', 'PDF · customer signature'), state: 'todo' });
+  return steps;
+}
+function burnProgressText() {
+  const mm = x => `${Math.floor(x / 60)}:${String(x % 60).padStart(2, '0')}`;
+  return L(`进行中 ${mm(burnLive?.elapsed || 0)} / ${mm(burnLive?.total || (burnState.run?.minutes || 10) * 60)}`, `Running ${mm(burnLive?.elapsed || 0)} / ${mm(burnLive?.total || (burnState.run?.minutes || 10) * 60)}`);
+}
+function stepsHtml(steps) {
+  const done = steps.filter(x => x.state !== 'todo' && x.k !== 'report').length, total = steps.length - 1;
+  const mark = (x, i) => x.running ? '<span class="spin"></span>' : x.state === 'ok' ? '✓' : x.state === 'warn' || x.state === 'bad' ? '!' : x.state === 'none' ? '–' : i + 1;
+  return `<div class="steps-head"><b>${L('出机检测', 'Pre-delivery check')}</b><span class="muted small">${L(`完成 ${done} / ${total} 项`, `${done} of ${total} done`)}</span></div>
+    <div class="pbar"><i style="width:${total ? done / total * 100 : 0}%"></i></div>
+    <div class="steps">${steps.map((x, i) => `<button class="st ${x.state} ${checkStep === x.k ? 'on' : ''}" data-k="${x.k}"><span class="c">${mark(x, i)}</span><span><b>${esc(x.title)}</b><span class="sub">${esc(x.sub || '')}</span></span></button>`).join('')}</div>
+    ${steps.some(x => (x.k === 'burn' || x.k === 'mem') && x.state === 'todo') ? `<button class="primary run-all" id="runAll" ${autoRun || burnState.running || memState.running ? 'disabled' : ''}>${autoRun ? L('自动进行中…', 'Running…') : L('一键跑完剩下的测试', 'Run the remaining tests')}</button>
+    <div class="muted small">${L('会依次做还没做的烤机（10 分钟）和内存测试，做完跳到报告。', 'Runs the burn-in (10 min) and memory test that are left, then goes to the report.')}</div>` : ''}`;
+}
+function stepBody(k, steps) {
+  const s = hasSys() ? data.system : null;
+  const i = steps.findIndex(x => x.k === k), next = steps[i + 1];
+  const nextBtn = next ? `<div class="step-next"><button data-step="${next.k}">${L('下一步：', 'Next: ')}${esc(next.title)} →</button></div>` : '';
+  const H = (t, sub) => `<div class="step-h"><div class="n">${L(`第 ${i + 1} 步 / 共 ${steps.length} 步`, `Step ${i + 1} of ${steps.length}`)}</div><h1>${t}</h1>${sub ? `<p class="muted">${sub}</p>` : ''}</div>`;
+  if (k === 'hw') return H(L('硬件资料', 'Hardware'), L('核对型号和规格是否和单据一样。', 'Check the model and specs match the order.')) + sysRowsHtml(s) + nextBtn;
+  if (k === 'win') return H(L('Windows 激活', 'Windows activation')) + (s.activated === false ? `<div class="banner warn">⚠ ${L('Windows 尚未激活，出机前请激活。', 'Windows is not activated. Activate it before delivery.')}</div>` : `<div class="banner info">✓ ${esc(s.activationText)}${s.activation?.channel ? ' · ' + esc(s.activation.channel) : ''}</div>`)
+    + `<div class="raw sys-card"><div class="attr-list"><div class="attr nv"><span class="n">${L('系统', 'Windows')}</span><span class="r">${esc(`${s.os?.caption || ''} ${s.os?.arch || ''} (${s.os?.build || ''})`)}</span></div></div></div>` + nextBtn;
+  if (k === 'disk') return H(L('硬盘健康', 'Drive health'), L('点一块硬盘看详细资料、测速和扫描。', 'Click a drive for details, speed test and scan.')) + `<div class="card"><div class="drows">${diskRows()}</div></div>` + nextBtn;
+  if (k === 'temp') return H(L('温度与风扇', 'Temperatures & fans'), L('平时的温度和风扇转速。满载时的温度看烤机测试。', 'Idle temperatures and fans. Full-load temperatures come from the burn-in.')) + sysNotes(s) + sensorsHtml(s) + nextBtn;
+  if (k === 'bat') return H(L('电池', 'Battery')) + '<div id="batCard"></div>' + nextBtn;
+  if (k === 'burn') return H(L('烤机测试', 'Burn-in test')) + '<div id="burnCard"></div>' + nextBtn;
+  if (k === 'mem') return H(L('内存测试', 'Memory test')) + '<div id="memCard"></div>' + nextBtn;
+  const items = pcItems(), sm = summaryOf(items);
+  return H(L('检测报告', 'Inspection report'), L('确认结果后生成 PDF，打印给客户签名。', 'Check the results, then create the PDF for the customer to sign.'))
+    + `<div class="card report-sum"><div class="score-row">${scoreRing(sm)}<div><h2 style="color:${color(sm.st)}">${esc(sm.head)}</h2><p class="muted small">${esc(sm.sub)}</p></div></div>
+      <div class="cats">${items.map(itemCard).join('')}</div>
+      <div class="step-next"><button class="primary" id="stepReport">${L('生成检测报告 (PDF)', 'Create inspection report (PDF)')}</button></div></div>`;
+}
+function renderCheck() {
+  const steps = checkSteps();
+  if (!steps.some(x => x.k === checkStep)) checkStep = steps[0].k;
+  $('#detail').innerHTML = `<div class="check-wrap"><aside class="check-steps" id="stepList">${stepsHtml(steps)}</aside><div class="check-body">${stepBody(checkStep, steps)}</div></div>`;
+  bindSteps();
+  const body = $('#detail .check-body');
+  body.querySelectorAll('[data-step]').forEach(b => b.onclick = () => { checkStep = b.dataset.step; renderCheck(); });
+  body.querySelectorAll('.cat').forEach(b => b.onclick = () => { const k = b.dataset.k; if (steps.some(x => x.k === k)) { checkStep = k; renderCheck(); } else if (k === 'win') { checkStep = 'win'; renderCheck(); } });
+  bindDiskRows(body);
+  $('#stepReport')?.addEventListener('click', () => $('#reportBtn').click());
+  if (checkStep === 'burn') renderBurn(); else if (checkStep === 'mem') window.renderMem(); else if (checkStep === 'bat') window.renderBat();
+  if (checkStep === 'temp') bindPawnio();
+}
+function bindSteps() {
+  const list = $('#stepList');
+  if (!list) return;
+  list.querySelectorAll('.st').forEach(b => b.onclick = () => { checkStep = b.dataset.k; renderCheck(); });
+  $('#runAll')?.addEventListener('click', runRemaining);
+}
+// Refresh only the step list (live progress) without redrawing the step that is open.
+function refreshSteps() { if (page === 'check' && $('#stepList')) { $('#stepList').innerHTML = stepsHtml(checkSteps()); bindSteps(); } }
+
+async function runRemaining() {
+  autoRun = true;
+  await autoNext();
+}
+// Called when a test ends during「一键跑完」: start the next one that has not run, else open the report step.
+async function autoNext() {
+  if (!autoRun) return;
+  const items = pcItems(), todo = k => items.find(x => x.key === k)?.state === 'todo';
+  if (todo('burn')) {
+    checkStep = 'burn'; render();
+    const r = await window.smartdisk.burnStart({ minutes: 10, cpu: true, gpu: true });
+    if (!r?.ok) { autoRun = false; render(); }
+    return;
+  }
+  if (todo('mem')) {
+    checkStep = 'mem'; render();
+    const r = await window.smartdisk.memStart({ passes: 1 });
+    if (!r?.ok) { autoRun = false; render(); }
+    return;
+  }
+  autoRun = false; checkStep = 'report'; render();
+}
+// A stopped (canceled) test ends the automatic run.
+function autoAfter(kind, ok) {
+  if (!autoRun) return;
+  if (!ok) { autoRun = false; return; }
+  setTimeout(autoNext, 800);
+}
 
 function renderDetail() {
-  if (current === -1) return renderSystem();
+  if (!hasSys() && ['pc', 'bat'].includes(page)) page = 'home';
+  if (page === 'disk' && !data.disks[current]) page = 'home';
+  if (page !== 'disk') current = -1;
+  if (page === 'home') return renderHome();
+  if (page === 'check') return renderCheck();
+  if (page === 'pc') return renderPc();
+  if (['burn', 'mem', 'bat'].includes(page)) return renderTestPage(page);
+  return renderDisk();
+}
+
+function renderDisk() {
   const d = data.disks[current];
   const s = d.summary;
   const base = monitorState?.disks?.[diskKey(d)]?.baseline;
@@ -535,20 +805,16 @@ function renderDetail() {
 }
 
 function render() {
-  if (!data.disks.length) {
-    $('#diskList').innerHTML = '';
-    $('#detail').innerHTML = `<div class="empty">${L('未找到硬盘。', 'No drives found. ')}${data.error ? esc(data.error) : L('请确认以管理员身份运行。', 'Make sure smartPC runs as administrator.')}</div>`;
-    return;
-  }
   renderList();
   renderDetail();
   $('#scanTime').textContent = L('检测时间 ', 'Checked ') + new Date(data.scannedAt).toLocaleString();
-  $('#notice').textContent = data.mock ? L('演示数据（未连接检测程序）', 'Demo data (helper not connected)') : (data.elevated ? '' : L('未取得管理员权限，部分硬盘可能无法读取', 'Not running as administrator; some drives may not be readable'));
+  $('#notice').textContent = !data.disks.length ? L('未找到硬盘。', 'No drives found. ') + (data.error ? data.error : L('请确认以管理员身份运行。', 'Make sure smartCheck runs as administrator.'))
+    : data.mock ? L('演示数据（未连接检测程序）', 'Demo data (helper not connected)') : (data.elevated ? '' : L('未取得管理员权限，部分硬盘可能无法读取', 'Not running as administrator; some drives may not be readable'));
 }
 
 async function scan() {
   $('#refresh').disabled = true;
-  try { data = await window.smartdisk.scan(); try { monitorState = await window.smartdisk.monitorState?.(); } catch {} try { historyData = (await window.smartdisk.history?.()) || {}; } catch {} if (current >= data.disks.length || (current === -1 && !data.system)) current = 0; render(); }
+  try { data = await window.smartdisk.scan(); try { monitorState = await window.smartdisk.monitorState?.(); } catch {} try { historyData = (await window.smartdisk.history?.()) || {}; } catch {} render(); }
   finally { $('#refresh').disabled = false; }
 }
 $('#refresh').addEventListener('click', scan);
@@ -609,7 +875,6 @@ const FEAT_FIELDS = ['f_bench', 'f_scan', 'f_selftest', 'f_grade', 'f_history', 
 const LIM_DEFAULTS = { lim_drop: 2, lim_hdd: 60, lim_ssd: 70, lim_nvme: 80, lim_cpu_w: 85, lim_cpu_b: 95, lim_gpu_w: 83, lim_gpu_b: 90, lim_board_w: 75, lim_board_b: 90 };
 let appSettings = {};
 let detailTab = 'overview';
-let sysTab = 'info';           // tab of the This PC page   // which tab of the drive page is open; kept when switching drives
 const on = f => String(appSettings['f_' + f] ?? '1') !== '0';
 // Checkboxes for the f_* switches and the monitor; '0' when unticked so a saved "off" is kept.
 const checkVals = f => Object.fromEntries([...FEAT_FIELDS, 'monitorOn'].map(k => [k, f.elements[k].checked ? '1' : (k === 'monitorOn' ? '' : '0')]));
@@ -656,7 +921,7 @@ async function showSmartAcc() {
 
 // ---- licence for the shop's remote service ----
 const LIC_WHY = () => ({ format: L('授权码格式不正确', 'That is not a valid licence key'), signature: L('授权码无效', 'That licence key is not genuine'),
-  product: L('这是 smartAcc 的授权码，不能用在 smartPC', 'This is a smartAcc key; it does not work for smartPC'),
+  product: L('这是 smartAcc 的授权码，不能用在 smartCheck', 'This is a smartAcc key; it does not work for smartCheck'),
   machine: L('这个授权码是发给另一台电脑的', 'This key was issued for another computer'), expired: L('这个授权码已过期', 'This licence key has expired') });
 async function showLicense() {
   let st = null;
@@ -802,10 +1067,12 @@ window.smartdisk.onBurn?.((ev) => {
   if (ev.type === 'start') { burnState = { running: true, run: ev.run }; burnLive = { elapsed: 0, total: ev.run.minutes * 60 }; }
   else if (ev.type === 'sample') { if (burnState.run) burnState.run.samples = [...(burnState.run.samples || []), ev.sample].slice(-400); burnLive = ev; }
   else if (ev.type === 'done') { burnState = { running: false, run: ev.run }; burnLive = null; }
-  document.querySelector('.tab[data-tab="burn"]')?.classList.toggle('busy', burnState.running);
   renderBurn();
+  if (ev.type === 'sample') return refreshSteps();
+  renderList(); if (page === 'home') renderHome(); refreshSteps();
+  if (ev.type === 'done') autoAfter('burn', ev.run?.status === 'done');
 });
-(async () => { try { burnState = (await window.smartdisk.burnState?.()) || burnState; } catch {} })();
+(async () => { try { burnState = (await window.smartdisk.burnState?.()) || burnState; if (data) render(); } catch {} })();
 
 // ---- memory test ----
 let memState = { running: false, last: null, full: null }, memLive = null, memErr = '';
@@ -847,10 +1114,12 @@ window.smartdisk.onMem?.((ev) => {
   if (ev.type === 'start') { memState.running = true; memLive = { pct: 0 }; }
   else if (ev.type === 'done') { memState = { ...memState, running: false, last: ev.result.status === 'done' ? ev.result : memState.last }; memLive = null; memErr = ev.result.status === 'error' ? ev.result.error || '?' : ''; }
   else memLive = ev;
-  document.querySelector('.tab[data-tab="mem"]')?.classList.toggle('busy', memState.running);
   window.renderMem();
+  if (ev.type !== 'start' && ev.type !== 'done') return refreshSteps();
+  renderList(); if (page === 'home') renderHome(); refreshSteps();
+  if (ev.type === 'done') autoAfter('mem', ev.result?.status === 'done');
 });
-(async () => { try { memState = (await window.smartdisk.memState?.()) || memState; window.renderMem(); } catch {} })();
+(async () => { try { memState = (await window.smartdisk.memState?.()) || memState; if (data) render(); } catch {} })();
 
 // ---- full battery report ----
 let batState = null, batLoading = false;

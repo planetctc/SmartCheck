@@ -1,6 +1,6 @@
-<p align="center"><img src="brand/smartPC_horizontal.png" alt="smartPC" width="320"></p>
+<p align="center"><img src="brand/smartCheck_horizontal.png" alt="smartCheck" width="320"></p>
 
-# smartPC
+# smartCheck
 
 店内自用的硬盘健康检测工具（Windows）。
 
@@ -37,7 +37,7 @@ npm install
 npm run build:helper     # 编译 helper
 npm start                # 以管理员身份打开终端再运行，才读得到硬盘
 npm run start:mock       # 用演示数据看界面
-npm run dist             # 产出 dist/smartPC-Setup-x.y.z.exe
+npm run dist             # 产出 dist/smartCheck-Setup-x.y.z.exe
 ```
 
 ## 已知限制

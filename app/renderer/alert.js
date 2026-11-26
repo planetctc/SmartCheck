@@ -6,8 +6,8 @@ const { L } = window.I18N;
 
 function render(p) {
   window.I18N.setLang(p.lang);
-  document.title = L('smartPC 硬盘提醒', 'smartPC drive alert');
-  $('#sub').textContent = L('smartPC 硬盘监控', 'smartPC drive monitor');
+  document.title = L('smartCheck 硬盘提醒', 'smartCheck drive alert');
+  $('#sub').textContent = L('smartCheck 硬盘监控', 'smartCheck drive monitor');
   $('#tip').innerHTML = L('请先<b>备份重要资料</b>（照片、文件），再联系我们检查。', 'Please <b>back up important files</b> (photos, documents) first, then contact us for a check.');
   $('#wa').textContent = L('WhatsApp 联系我们', 'Contact us on WhatsApp');
   $('#open').textContent = L('查看详情', 'Details');
@@ -17,7 +17,7 @@ function render(p) {
   const pcOnly = p.alerts.every(a => a.pcHot);
   document.body.classList.toggle('is-bad', bad);
   $('#title').textContent = bad ? L('硬盘出现问题', 'Drive problem found') : pcOnly ? L('电脑温度过高', 'The PC is overheating') : hotOnly ? L('温度过高', 'Overheating') : L('硬盘需要注意', 'Drive needs attention');
-  if (pcOnly) { document.title = L('smartPC 电脑温度提醒', 'smartPC temperature alert'); $('#sub').textContent = L('smartPC 电脑监控', 'smartPC PC monitor'); }
+  if (pcOnly) { document.title = L('smartCheck 电脑温度提醒', 'smartCheck temperature alert'); $('#sub').textContent = L('smartCheck 电脑监控', 'smartCheck PC monitor'); }
   $('#list').innerHTML = p.alerts.map(a => `<div class="alert-item ${a.severity}">
       <b>${esc(a.model)}${a.letters?.length ? ` <span class="muted">(${esc(a.letters.join(' '))})</span>` : ''}</b>
       <ul>${a.text.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`).join('');

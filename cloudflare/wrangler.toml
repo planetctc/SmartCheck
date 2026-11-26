@@ -1,4 +1,4 @@
-# PLANET-only remote alerts for smartPC. Deployed by .github/workflows/cloudflare.yml with the shop's own
+# PLANET-only remote alerts for smartCheck. Deployed by .github/workflows/cloudflare.yml with the shop's own
 # Cloudflare account (secrets CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID). The database id is filled in by the workflow.
 name = "smartdisk-remote"
 main = "src/worker.js"
