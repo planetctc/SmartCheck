@@ -1,5 +1,5 @@
 // Online update, same approach as smartAcc: new versions are published as GitHub releases
-// on planetctc/smartdisk-releases (see "publish" in package.json). Installed version only.
+// on planetctc/smartCheck-releases (see "publish" in package.json). Installed version only.
 //
 // 0.15.1 fix: the tray monitor downloads updates quietly. When the shop then clicked "Download and install" in a
 // window, the update was already downloaded, the quiet flag swallowed the "ready" dialog and nothing seemed to
@@ -29,9 +29,9 @@ function status(phase, extra = {}) {
 async function askRestart(version) {
   const w = liveWin();
   const opts = {
-    type: 'info', buttons: [L('现在重启', 'Restart now'), L('稍后', 'Later')], defaultId: 0, cancelId: 1, title: 'smartPC',
-    message: L(`smartPC ${version} 已下载好`, `smartPC ${version} is downloaded`),
-    detail: L('重启 smartPC 就完成更新。\n选「稍后」的话，下次关闭 smartPC 时会自动更新。', 'Restart smartPC to finish the update.\nIf you choose Later, it updates the next time smartPC closes.'),
+    type: 'info', buttons: [L('现在重启', 'Restart now'), L('稍后', 'Later')], defaultId: 0, cancelId: 1, title: 'smartCheck',
+    message: L(`smartCheck ${version} 已下载好`, `smartCheck ${version} is downloaded`),
+    detail: L('重启 smartCheck 就完成更新。\n选「稍后」的话，下次关闭 smartCheck 时会自动更新。', 'Restart smartCheck to finish the update.\nIf you choose Later, it updates the next time smartCheck closes.'),
   };
   const r = w ? await dialog.showMessageBox(w, opts) : await dialog.showMessageBox(opts);
   if (r.response === 0) setImmediate(() => updater.quitAndInstall(false, true));
@@ -62,7 +62,7 @@ function getUpdater() {
 async function checkUpdate(win, manual) {
   if (win) winRef = win;
   const u = getUpdater();
-  const say = (type, message, detail) => { const w = liveWin(); const o = { type, title: 'smartPC', message, detail }; return w ? dialog.showMessageBox(w, o) : dialog.showMessageBox(o); };
+  const say = (type, message, detail) => { const w = liveWin(); const o = { type, title: 'smartCheck', message, detail }; return w ? dialog.showMessageBox(w, o) : dialog.showMessageBox(o); };
   if (!u) { if (manual) say('info', L('网上更新只适用于安装版。', 'Online updates only work in the installed version.')); return { ok: false }; }
   if (downloading) {
     // Already downloading (maybe quietly by the tray): from now on show progress and the restart dialog here.
@@ -79,8 +79,8 @@ async function checkUpdate(win, manual) {
     if (!manual && info.version === laterVer) return { ok: true };
     const notes = String(info.releaseNotes || '').replace(/<[^>]+>/g, '').trim().slice(0, 800);
     const opts = {
-      type: 'info', buttons: [L('下载并安装', 'Download and install'), L('以后再说', 'Not now')], defaultId: 0, cancelId: 1, title: 'smartPC',
-      message: L(`有新版本 smartPC ${info.version}（目前是 ${app.getVersion()}）`, `smartPC ${info.version} is available (you have ${app.getVersion()})`), detail: notes,
+      type: 'info', buttons: [L('下载并安装', 'Download and install'), L('以后再说', 'Not now')], defaultId: 0, cancelId: 1, title: 'smartCheck',
+      message: L(`有新版本 smartCheck ${info.version}（目前是 ${app.getVersion()}）`, `smartCheck ${info.version} is available (you have ${app.getVersion()})`), detail: notes,
     };
     const w = liveWin();
     const a = w ? await dialog.showMessageBox(w, opts) : await dialog.showMessageBox(opts);

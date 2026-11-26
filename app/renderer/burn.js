@@ -26,7 +26,7 @@ else {
   let frames = 0, last = performance.now();
   const loop = (now) => {
     gl.uniform1f(ut, now / 1000); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); frames++;
-    if (now - last > 1000) { hud.textContent = `smartPC GPU burn-in · ${Math.round(frames * 1000 / (now - last))} FPS`; frames = 0; last = now; }
+    if (now - last > 1000) { hud.textContent = `smartCheck GPU burn-in · ${Math.round(frames * 1000 / (now - last))} FPS`; frames = 0; last = now; }
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);

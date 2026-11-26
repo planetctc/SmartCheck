@@ -32,7 +32,7 @@ function pick(raw, t = Date.now()) {
 }
 
 // Result from the samples. lim = limits.limitsOf(settings): { cpuWarn, cpuBad, gpuWarn, gpuBad }.
-// status: done | canceled | interrupted (smartPC or Windows stopped during the test: crash, freeze or power cut).
+// status: done | canceled | interrupted (smartCheck or Windows stopped during the test: crash, freeze or power cut).
 function evaluate(run, lim = {}) {
   const s = run.samples || [];
   const vals = k => s.map(x => x[k]).filter(v => v != null);

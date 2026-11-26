@@ -1,12 +1,12 @@
-// smartPC remote service (Cloudflare Worker + D1), for PLANET COMPUTER TECHNOLOGY CENTRE only.
-//   POST /api/report   customer PCs with a smartPC licence key send their drive status here
+// smartCheck remote service (Cloudflare Worker + D1), for PLANET COMPUTER TECHNOLOGY CENTRE only.
+//   POST /api/report   customer PCs with a smartCheck licence key send their drive status here
 //   GET  /             password-protected page: every PC, its drives, and open alerts
 // Secrets (set by the deploy workflow from GitHub secrets, never in this file):
 //   DASH_PASSWORD             password for the page
 //   RESEND_KEY                Resend API key: alert emails to MAIL_TO (default planet@planetctc.com.my)
 //   MAIL_TO, MAIL_FROM        optional; MAIL_FROM only after a domain is verified in Resend
 //   TG_TOKEN, TG_CHAT         optional Telegram bot token and chat id
-// The licence public key is the same as smartAcc / smartPC; only keys with product "smartdisk" are accepted.
+// The licence public key is the same as smartAcc / smartCheck; only keys with product "smartdisk" are accepted.
 
 const PUB = 'MCowBQYDK2VwAyEAv47aHbwc/+JdfJ3RxL26W0lFlbVQH0odWVzYoe/C7W4=';
 const MAX_BODY = 64 * 1024;
@@ -80,16 +80,16 @@ async function report(req, env) {
 // Alerts go by email (Resend, free tier: sign up with the shop mailbox, no domain setup needed) and/or Telegram.
 async function notify(env, req, { customer, pc, alerts, first }) {
   const origin = new URL(req.url).origin;
-  const subject = first ? `smartPC：${customer || pc} 已连上后台` : `⚠️ smartPC 硬盘提醒：${customer || '-'}（${pc}）`;
+  const subject = first ? `smartCheck：${customer || pc} 已连上后台` : `⚠️ smartCheck 硬盘提醒：${customer || '-'}（${pc}）`;
   const lines = first
-    ? [`${customer || '-'}（${pc}）的电脑已经连上 smartPC 后台。`]
+    ? [`${customer || '-'}（${pc}）的电脑已经连上 smartCheck 后台。`]
     : [`客户：${customer || '-'}`, `电脑：${pc}`, '',
       ...alerts.map(a => `• ${a.model}${(a.letters || []).length ? ' (' + a.letters.join(' ') + ')' : ''}：${(a.text || []).join('；')}`)];
   lines.push('', `后台：${origin}`);
   const text = lines.join('\n'), jobs = [];
   if (env.RESEND_KEY) jobs.push(fetch('https://api.resend.com/emails', {
     method: 'POST', headers: { Authorization: `Bearer ${env.RESEND_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: env.MAIL_FROM || 'smartPC <onboarding@resend.dev>', to: [env.MAIL_TO || 'planet@planetctc.com.my'], subject, text }),
+    body: JSON.stringify({ from: env.MAIL_FROM || 'smartCheck <onboarding@resend.dev>', to: [env.MAIL_TO || 'planet@planetctc.com.my'], subject, text }),
   }));
   if (env.TG_TOKEN && env.TG_CHAT) jobs.push(fetch(`https://api.telegram.org/bot${env.TG_TOKEN}/sendMessage`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -125,7 +125,7 @@ input{padding:8px 10px;border:1px solid var(--border);border-radius:8px;backgrou
 .top{display:flex;justify-content:space-between;align-items:center}form.inline{display:inline}
 </style></head><body><main>${body}</main></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" } });
 
-const loginPage = msg => page('smartPC 后台', `<h1>smartPC 后台</h1><form method="post" action="/login" class="card">
+const loginPage = msg => page('smartCheck 后台', `<h1>smartCheck 后台</h1><form method="post" action="/login" class="card">
 <p class="muted">PLANET COMPUTER TECHNOLOGY CENTRE</p><input type="password" name="pw" placeholder="密码" autofocus required>
 <p><button>登录</button> <span class="bad">${esc(msg || '')}</span></p></form>`);
 
@@ -151,7 +151,7 @@ async function dashboard(env) {
 <div class="small muted">${esc(d.os)} · 第一次上传 ${esc(String(d.first_seen).slice(0, 10))} <form method="post" action="/hide/${esc(d.id)}" class="inline"><button class="small">从列表移除</button></form></div></div>`;
   }).join('');
   const bad = devs.filter(d => d.worst === 'bad').length, warn = devs.filter(d => d.worst === 'warn').length;
-  return page('smartPC 后台', `<div class="top"><h1>smartPC 后台</h1><form method="post" action="/logout"><button>退出</button></form></div>
+  return page('smartCheck 后台', `<div class="top"><h1>smartCheck 后台</h1><form method="post" action="/logout"><button>退出</button></form></div>
 <h2>未处理的提醒（${ev.length}）</h2>${evHtml}
 <h2>客户电脑（${devs.length}）<span class="small muted"> · <span class="bad">危险 ${bad}</span> · <span class="warn">注意 ${warn}</span></span></h2>${devHtml || '<p class="muted">还没有电脑上传。</p>'}`);
 }

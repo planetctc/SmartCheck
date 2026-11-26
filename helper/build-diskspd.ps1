@@ -1,5 +1,5 @@
 # Builds Microsoft DiskSpd (MIT License, https://github.com/microsoft/diskspd) from source at a pinned tag.
-# The prebuilt release binaries carry a different licence, so smartPC ships its own build of the MIT source.
+# The prebuilt release binaries carry a different licence, so smartCheck ships its own build of the MIT source.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $dir = Join-Path $root 'third_party\diskspd'

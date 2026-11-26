@@ -1,8 +1,8 @@
 {
   "name": "smartdisk",
-  "productName": "smartPC",
-  "version": "0.17.1",
-  "description": "smartPC - 电脑健康检测",
+  "productName": "smartCheck",
+  "version": "0.18.0",
+  "description": "smartCheck - 电脑健康检测",
   "main": "app/main.js",
   "private": true,
   "scripts": {
@@ -21,7 +21,7 @@
   },
   "build": {
     "appId": "my.planetcomputer.smartdisk",
-    "productName": "smartPC",
+    "productName": "smartCheck",
     "executableName": "smartDisk",
     "files": [
       "app/**/*",
@@ -72,8 +72,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "smartPC",
-      "artifactName": "smartPC-Setup-${version}.${ext}",
+      "shortcutName": "smartCheck",
+      "artifactName": "smartCheck-Setup-${version}.${ext}",
       "include": "build/installer.nsh",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico"
@@ -83,7 +83,7 @@
       {
         "provider": "github",
         "owner": "planetctc",
-        "repo": "smartdisk-releases",
+        "repo": "smartCheck-releases",
         "releaseType": "release"
       }
     ]

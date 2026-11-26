@@ -3,30 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
-  <title>smartPC</title>
+  <title>smartCheck</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <aside class="sidebar">
     <div class="brand">
-      <img src="img/smartPC_horizontal.svg" class="logo logo-light" alt="smartPC">
-      <img src="img/smartPC_horizontal_dark.svg" class="logo logo-dark" alt="smartPC">
+      <img src="img/smartCheck_horizontal.svg" class="logo logo-light" alt="smartCheck">
+      <img src="img/smartCheck_horizontal_dark.svg" class="logo logo-dark" alt="smartCheck">
     </div>
-    <div class="side-title" data-en="Drives">硬盘</div>
-    <nav id="diskList" class="disk-list"></nav>
+    <div class="side-scroll">
+      <nav id="mainNav" class="main-nav"></nav>
+      <div class="side-title" data-en="Drives">硬盘</div>
+      <nav id="diskList" class="disk-list"></nav>
+    </div>
     <div class="side-foot">
-      <button id="refresh" class="primary" data-en="Scan again">重新检测</button>
-      <button id="reportBtn" data-en="Inspection report (PDF)">生成检测报告 (PDF)</button>
-      <label class="theme-pick" data-en="Skin">皮肤
-        <select id="theme">
-          <option value="planet" data-en="PLANET Blue">PLANET 蓝</option>
-          <option value="slate" data-en="Graphite">石墨</option>
-          <option value="light" data-en="Light">明亮</option>
-          <option value="ocean" data-en="Ocean">海蓝</option>
-          <option value="forest" data-en="Forest">森林</option>
-          <option value="sunset" data-en="Sunset">落日</option>
-        </select>
-      </label>
+      <div class="foot-btns"><button id="refresh" class="primary" data-en="Scan again">重新检测</button>
+      <button id="reportBtn" data-en="Report (PDF)">检测报告 PDF</button></div>
       <div id="scanTime" class="muted small"></div>
       <div id="notice" class="notice small"></div>
       <div id="updNote" class="small upd-note" hidden></div>
@@ -39,10 +32,10 @@
   </main>
 
   <dialog id="about">
-    <img src="img/smartPC_icon.svg" class="about-icon" alt="">
-    <h2>smartPC <span id="ver" class="muted"></span></h2>
+    <img src="img/smartCheck_icon.svg" class="about-icon" alt="">
+    <h2>smartCheck <span id="ver" class="muted"></span></h2>
     <p data-en="Disk health tool. Reads SATA SMART data and the NVMe health log.">硬盘健康检测工具，读取 SATA 硬盘 SMART 数据和 NVMe 健康日志。</p>
-    <p class="muted" data-en="smartPC is developed by PLANET COMPUTER TECHNOLOGY CENTRE.">smartPC 由 PLANET COMPUTER TECHNOLOGY CENTRE 开发。</p>
+    <p class="muted" data-en="smartCheck is developed by PLANET COMPUTER TECHNOLOGY CENTRE.">smartCheck 由 PLANET COMPUTER TECHNOLOGY CENTRE 开发。</p>
     <p class="small muted" data-en="Benchmark engine: Microsoft DiskSpd (MIT License). QR codes: qrcode-generator by Kazuhiko Arase (MIT License). Sensors: LibreHardwareMonitorLib (MPL-2.0) and the PawnIO driver.">测速引擎：Microsoft DiskSpd（MIT 授权）。二维码：qrcode-generator，Kazuhiko Arase（MIT 授权）。传感器：LibreHardwareMonitorLib（MPL-2.0 授权）和 PawnIO 驱动。</p>
     <p class="small">© 2026 PLANET COMPUTER TECHNOLOGY CENTRE. This product is the copyright of PLANET COMPUTER TECHNOLOGY CENTRE. All rights reserved.</p>
     <p class="small"><b>PLANET COMPUTER TECHNOLOGY CENTRE</b><br>Batu Gajah, Perak · WhatsApp +60 12-510 5542 · planet@planetctc.com.my</p>
@@ -85,6 +78,7 @@
       <h2 data-en="Settings">设置</h2>
       <div class="small muted set-note" data-en="Shop details are printed on the report and shown in the customer's drive alert.">店铺信息会印在检测报告上，也会显示在客户电脑的硬盘提醒窗口里。</div>
       <label data-en="Language">语言 Language<select name="lang"><option value="zh">中文</option><option value="en">English</option></select></label>
+      <label data-en="Skin">皮肤（只影响这台电脑）<select id="theme"><option value="planet" data-en="PLANET Blue">PLANET 蓝</option><option value="slate" data-en="Graphite">石墨</option><option value="light" data-en="Light">明亮</option><option value="ocean" data-en="Ocean">海蓝</option><option value="forest" data-en="Forest">森林</option><option value="sunset" data-en="Sunset">落日</option></select></label>
       <label data-en="Shop name">店名<input name="shopName" maxlength="200"></label>
       <label data-en="Address">地址<input name="shopAddress" maxlength="200"></label>
       <label data-en="Contact (printed on the report)">联系方式（印在报告上）<input name="shopContact" maxlength="200"></label>
