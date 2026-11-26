@@ -91,6 +91,7 @@ function diskKey(d) { return d.serial || `${d.model}#${d.index}`; }
 
 function startTask(kind, diskIndex, letter) {
   if (task) return { ok: false, error: 'busy' };
+  if (burn || mem) return { ok: false, error: L('请先等烤机或内存测试完成。', 'Wait for the burn-in or memory test to finish first.') };   // burn-in or memory test running: results would be wrong
   const disk = lastScan?.disks?.find(d => d.index === diskIndex);
   if (!disk) return { ok: false, error: 'nodisk' };
   const key = diskKey(disk);
@@ -313,7 +314,12 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.on('closed', () => { win = null; });
+  win.on('closed', () => {
+    win = null;
+    // Nobody can see or stop them any more: stop the burn-in and the memory test instead of loading the PC unseen.
+    if (burn) burnFinish('canceled');
+    if (mem) mem.stop();
+  });
 }
 
 // ---- background monitor (tray) ----
@@ -463,7 +469,7 @@ async function monitorCheck(manual) {
   const { state, alerts } = monitor.check({ disks: m.disks || {} }, scan, Date.now(), lim);
   // CPU / GPU / board temperatures too (the shop sets the limits in Settings → 警告门槛).
   let sensState = m.sensors || {}, sensAlerts = [], sens = [];
-  if (limits.featureOn(st, 'sensors')) {
+  if (limits.featureOn(st, 'sensors') && !burn) {   // not during a burn-in: the test makes the PC hot on purpose
     try { sens = ((await sensors.read(sensorsPath())) || []).map(x => ({ ...x, level: sensorLevel(x, lim) })); } catch {}
     ({ state: sensState, alerts: sensAlerts } = monitor.checkSensors(sensState, sens, Date.now(), lim));
   }
@@ -599,6 +605,7 @@ function burnRecover() {
 function burnStart(opts = {}) {
   if (burn) return { ok: false, error: 'busy' };
   if (task) return { ok: false, error: 'task' };
+  if (mem) return { ok: false, error: 'mem' };
   const minutes = Math.max(1, Math.min(60, Math.round(Number(opts.minutes) || 10)));
   const run = { status: 'running', startedAt: new Date().toISOString(), minutes, cpu: opts.cpu !== false, gpu: !!opts.gpu, samples: [], threads: 0 };
   const mock = process.env.SMARTDISK_MOCK === '1';
@@ -672,6 +679,7 @@ let mem = null;
 ipcMain.handle('mem:start', (_e, o) => {
   if (mem) return { ok: false, error: 'busy' };
   if (burn) return { ok: false, error: 'burn' };
+  if (task) return { ok: false, error: 'task' };
   const passes = Math.max(1, Math.min(5, Number(o?.passes) || 1));
   const acc = { status: 'running', passes, startedAt: new Date().toISOString(), pct: 0, errors: 0 };
   const send = ev => { if (win && !win.isDestroyed()) win.webContents.send('mem:event', ev); };
@@ -688,7 +696,7 @@ ipcMain.handle('mem:start', (_e, o) => {
     if (ev.type === 'done') {
       mem = null;
       Object.assign(acc, { status: ev.stopped ? 'canceled' : ev.error ? 'error' : 'done', errors: ev.errors, bad: ev.bad, testedBytes: ev.testedBytes, error: ev.error, finishedAt: new Date().toISOString() });
-      if (acc.status !== 'canceled') testResults.pc = { ...testResults.pc, mem: acc };
+      if (acc.status === 'done') testResults.pc = { ...testResults.pc, mem: acc };
       send({ type: 'done', result: acc });
       return;
     }
@@ -730,12 +738,13 @@ if (!single) app.quit();
 app.on('second-instance', () => createWindow());
 
 app.whenReady().then(() => {
+  // Before the monitor branch: after a crash the logon task starts the tray first, and the window opens in that process.
+  burnRecover();
   if (monitorMode) {
     if (loadMonitor().enabled === false) return app.quit();
     startMonitor();
     return;
   }
-  burnRecover();
   createWindow();
   // Make sure the logon task exists (the shop's first run sets it up), unless monitoring was turned off.
   if (loadMonitor().enabled !== false) setMonitorTask(true);
