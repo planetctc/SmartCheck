@@ -354,7 +354,7 @@ function updateMonitor(scan, notify) {
 }
 
 // ---- PLANET remote alerts (licensed PCs only) ----
-const REMOTE_URL = '';   // set once the shop's Cloudflare service is deployed
+const REMOTE_URL = 'https://smartdisk-remote.planetctc.workers.dev';   // the shop's Cloudflare service (deployed 2026-11-26)
 const remoteUrl = () => (loadSettings().remoteUrl || REMOTE_URL).trim();
 let remoteLast = null;
 async function remoteSend(scan, alerts, force) {
