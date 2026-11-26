@@ -46,9 +46,12 @@ function quickTest({ passes = 1, onEvent, maxBytes }) {
   const buf = new SharedArrayBuffer(4), stop = new Int32Array(buf);
   const w = new Worker(WORKER, { eval: true, workerData: { stop: buf, chunks, chunkBytes: CHUNK, passes }, resourceLimits: { maxOldGenerationSizeMb: 256 } });
   onEvent({ type: 'start', planBytes: chunks * CHUNK, totalBytes: os.totalmem(), freeBytes: free });
-  w.on('message', m => onEvent(m));
-  w.on('error', e => onEvent({ type: 'done', errors: 0, error: e.message, testedBytes: 0 }));
-  w.on('exit', () => {});
+  // Exactly one 'done', even if the worker dies (out of memory) without sending it; otherwise the app stays "busy".
+  let ended = false;
+  const end = m => { if (!ended) { ended = true; onEvent(m); } };
+  w.on('message', m => (m.type === 'done' ? end(m) : !ended && onEvent(m)));
+  w.on('error', e => end({ type: 'done', errors: 0, error: e.message, testedBytes: 0 }));
+  w.on('exit', () => end({ type: 'done', errors: 0, error: 'stopped unexpectedly', testedBytes: 0 }));
   return { stop: () => { Atomics.store(stop, 0, 1); } };
 }
 

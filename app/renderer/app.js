@@ -795,7 +795,7 @@ function renderBurn() {
   $('#burnStop')?.addEventListener('click', () => window.smartdisk.burnStop());
   $('#burnGo')?.addEventListener('click', async () => {
     const r = await window.smartdisk.burnStart({ minutes: +$('#burnMin').value, cpu: true, gpu: $('#burnGpu').checked });
-    if (!r?.ok) $('#burnMsg').textContent = r?.error === 'task' ? L('请先等硬盘测试完成。', 'Wait for the drive test to finish first.') : L('已经在烤机中。', 'A burn-in is already running.');
+    if (!r?.ok) $('#burnMsg').textContent = r?.error === 'task' ? L('请先等硬盘测试完成。', 'Wait for the drive test to finish first.') : r?.error === 'mem' ? L('请先等内存测试完成。', 'Wait for the memory test to finish first.') : L('已经在烤机中。', 'A burn-in is already running.');
   });
 }
 window.smartdisk.onBurn?.((ev) => {
@@ -808,7 +808,7 @@ window.smartdisk.onBurn?.((ev) => {
 (async () => { try { burnState = (await window.smartdisk.burnState?.()) || burnState; } catch {} })();
 
 // ---- memory test ----
-let memState = { running: false, last: null, full: null }, memLive = null;
+let memState = { running: false, last: null, full: null }, memLive = null, memErr = '';
 const gbOf = b => (b ? Math.round(b / 1024 ** 3 * 10) / 10 : 0);
 window.renderMem = function renderMem() {
   const el = $('#memCard');
@@ -829,13 +829,13 @@ window.renderMem = function renderMem() {
         <label>${L('遍数', 'Passes')} <select id="memPass">${[1, 2, 3].map(n => `<option value="${n}">${n}</option>`).join('')}</select></label>
         <button id="memFull">${L('完整测试（需重启）', 'Full test (restart)')}</button>
         <button class="go primary" id="memGo">${L('开始快速测试', 'Start quick test')}</button>
-      </div><div id="memMsg" class="small"></div>${fullHtml}${lastHtml}`;
+      </div><div id="memMsg" class="small st-bad">${memErr ? esc(L('测试没有完成：', 'The test did not finish: ') + memErr) : ''}</div>${fullHtml}${lastHtml}`;
   }
   el.innerHTML = `<div class="tool burn-tool"><h3>${L('内存测试', 'Memory test')} <small class="muted">${L('结果会印进检测报告', 'printed on the inspection report')}</small></h3>${body}</div>`;
   $('#memStop')?.addEventListener('click', () => window.smartdisk.memStop());
   $('#memGo')?.addEventListener('click', async () => {
     const r = await window.smartdisk.memStart({ passes: +$('#memPass').value });
-    if (!r?.ok) $('#memMsg').textContent = r?.error === 'burn' ? L('请先等烤机测试完成。', 'Wait for the burn-in to finish first.') : L('已经在测试中。', 'A test is already running.');
+    if (!r?.ok) $('#memMsg').textContent = r?.error === 'burn' ? L('请先等烤机测试完成。', 'Wait for the burn-in to finish first.') : r?.error === 'task' ? L('请先等硬盘测试完成。', 'Wait for the drive test to finish first.') : L('已经在测试中。', 'A test is already running.');
   });
   $('#memFull')?.addEventListener('click', async () => {
     const r = await window.smartdisk.memFull();
@@ -845,7 +845,7 @@ window.renderMem = function renderMem() {
 };
 window.smartdisk.onMem?.((ev) => {
   if (ev.type === 'start') { memState.running = true; memLive = { pct: 0 }; }
-  else if (ev.type === 'done') { memState = { ...memState, running: false, last: ev.result.status === 'canceled' ? memState.last : ev.result }; memLive = null; }
+  else if (ev.type === 'done') { memState = { ...memState, running: false, last: ev.result.status === 'done' ? ev.result : memState.last }; memLive = null; memErr = ev.result.status === 'error' ? ev.result.error || '?' : ''; }
   else memLive = ev;
   document.querySelector('.tab[data-tab="mem"]')?.classList.toggle('busy', memState.running);
   window.renderMem();
@@ -867,13 +867,15 @@ function batChart(h) {
     <div class="legend-row small muted"><i class="lg-h"></i>${L('满电容量 / 设计容量', 'Full charge / design capacity')}</div>`;
 }
 window.renderBat = async function renderBat(force) {
-  const el = $('#batCard');
+  let el = $('#batCard');
   if (!el) return;
   if ((!batState || force) && !batLoading) {
     batLoading = true;
     el.innerHTML = `<div class="tool"><h3>${L('电池报告', 'Battery report')}</h3><div class="tool-status"><span class="spin"></span>${L('正在读取 Windows 电池报告…', 'Reading the Windows battery report…')}</div></div>`;
     try { batState = await window.smartdisk.batteryRead(); } catch (e) { batState = { ok: false, error: e.message }; }
     batLoading = false;
+    el = $('#batCard');   // the page may have been redrawn while powercfg ran
+    if (!el) return;
   }
   if (!batState) return;
   const r = batState.report;
