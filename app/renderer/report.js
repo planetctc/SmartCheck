@@ -26,7 +26,8 @@ function overall(disks) {
 }
 
 let TESTS = {};
-let GRADE_ON = true;   // the shop can turn the buyback grade off in Settings
+let GRADE_ON = true;
+let SETTINGS = {};   // the shop can turn the buyback grade off in Settings
 const GRADE_TEXT = () => ({ A: B('成色很好', 'Like new'), B: B('正常使用痕迹', 'Normal wear'), C: B('用得多或有疑点', 'Heavily used / questionable'), D: B('不建议收购', 'Not recommended') });
 
 // QR code with the key facts as plain text, so any phone camera can read it for warranty checks (no internet needed).
@@ -135,6 +136,25 @@ function systemSection(sys) {
   if (bat) rows.push([B('电池', 'Battery'), `${L('损耗', 'Wear')} ${bat.wear}%<span class="sub">${L(`设计 ${num(bat.design)} mWh · 当前满电 ${num(bat.full)} mWh`, `Design ${num(bat.design)} mWh · full now ${num(bat.full)} mWh`)}${bat.cycles ? L(` · 充电 ${num(bat.cycles)} 次`, ` · ${num(bat.cycles)} cycles`) : ''}</span>`]);
   const temps = (sys.sensors || []).filter(x => x.kind === 'temp' || x.kind === 'fan');
   if (temps.length) rows.push([B('温度 / 风扇', 'Temps / fans'), temps.map(x => `<span class="${x.level === 'ok' ? '' : x.level === 'warn' ? 'warn' : 'bad'}">${esc(x.name)} ${esc(x.value)}${esc(x.unit)}</span>`).join(' · ')]);
+  // Burn-in, memory test and full battery report, when they were run before printing.
+  const pc = TESTS.pc || {};
+  const on = f => String(SETTINGS?.['f_' + f] ?? '1') !== '0';
+  const bn = pc.burn, br = bn?.result;
+  if (br && on('burn')) {
+    const V = { pass: ['ok', B('通过', 'Pass')], warn: ['warn', B('需要注意', 'Caution')], fail: ['bad', B('不通过', 'Fail')], canceled: ['', B('未完成', 'Not finished')] }[br.verdict] || ['', ''];
+    rows.push([B('烤机测试', 'Burn-in'), `<b class="${V[0]}">${V[1]}</b> · ${Math.round((br.seconds || 0) / 60)} ${L('分钟', 'min')}${bn.gpu ? ' · CPU + GPU' : ' · CPU'}`
+      + `<span class="sub">${[br.cpuMax != null ? `CPU ${L('最高', 'max')} ${br.cpuMax} °C` : '', bn.gpu && br.gpuMax != null ? `GPU ${L('最高', 'max')} ${br.gpuMax} °C` : '',
+        br.clockStart ? `${br.clockStart} → ${br.clockEnd || '-'} MHz` : '', ...(br.reasons || [])].filter(Boolean).map(esc).join(' · ')}</span>`]);
+  }
+  const mm = pc.mem;
+  if (mm && on('memtest')) rows.push([B('内存测试', 'Memory test'), mm.errors ? `<b class="bad">${L(`发现 ${mm.errors} 个错误`, `${mm.errors} errors`)}</b>` : `<b class="ok">${B('没有错误', 'No errors')}</b>`
+    + `<span class="sub">${L(`测了 ${Math.round(mm.testedBytes / 1024 ** 3 * 10) / 10} GB · ${mm.passes} 遍`, `${Math.round(mm.testedBytes / 1024 ** 3 * 10) / 10} GB tested · ${mm.passes} pass(es)`)}</span>`]);
+  const bt = pc.battery;
+  if (bt && on('battery')) {
+    const hm = m => (m == null ? '-' : `${Math.floor(m / 60)}h ${m % 60}m`);
+    rows.push([B('电池报告', 'Battery report'), `${L('损耗', 'Wear')} <b class="${bt.wear >= 40 ? 'bad' : bt.wear >= 20 ? 'warn' : 'ok'}">${bt.wear ?? '-'}%</b> · ${L('充电', 'Cycles')} ${num(bt.cycles)}`
+      + `<span class="sub">${L(`满电 ${num(bt.full)} / 设计 ${num(bt.design)} mWh · 现在可用约 ${hm(bt.runtimeNow)}（新电池 ${hm(bt.runtimeNew)}）`, `Full ${num(bt.full)} / design ${num(bt.design)} mWh · runtime now about ${hm(bt.runtimeNow)} (new ${hm(bt.runtimeNew)})`)}</span>`]);
+  }
   return `<h2>${B('整机信息', 'System')}</h2><table class="sys">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>`;
 }
 
@@ -142,6 +162,7 @@ window.renderReport = (p) => {
   window.I18N.setLang(p.lang);
   TESTS = p.tests || {};
   GRADE_ON = String(p.settings?.f_grade ?? '1') !== '0';
+  SETTINGS = p.settings || {};
   const disks = p.scan.disks || [];
   const ov = overall(disks);
   const ovText = {

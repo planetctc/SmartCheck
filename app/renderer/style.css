@@ -248,3 +248,21 @@ dialog.form-dlg .lim-grid input[type=number] { width: 58px; box-sizing: border-b
 .sys-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 8px 8px; }
 .sys-card .sens-h { padding: 0 8px; }
 .upd-note { color: var(--accent); font-weight: 600; }
+
+/* burn-in */
+.burn-tool { gap: 12px; }
+.burn-opts { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.burn-opts label { display: flex; align-items: center; gap: 6px; }
+.burn-opts .primary { margin-left: auto; padding: 8px 18px; }
+.burn-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.burn-stat { background: var(--panel-2); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; }
+.burn-stat .k { font-size: 12px; color: var(--muted); }
+.burn-stat .v { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.burn-res { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
+.burn-verdict { font-size: 20px; font-weight: 800; }
+.burn-reasons { text-align: left; padding-left: 18px; list-style: disc; font-size: 13px; }
+svg.burn-chart .cpu { stroke: var(--bad); }
+svg.burn-chart .gpu { stroke: var(--accent); }
+svg.burn-chart .lim { stroke: var(--bad); stroke-dasharray: 3 4; opacity: .5; }
+.legend-row i.lg-c, .legend-row i.lg-g, .legend-row i.lg-l { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin: 0 4px 0 8px; }
+.legend-row i.lg-c { background: var(--bad); } .legend-row i.lg-g { background: var(--accent); } .legend-row i.lg-l { border-top: 2px dashed var(--bad); height: 0; opacity: .6; }

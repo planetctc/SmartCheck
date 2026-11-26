@@ -53,3 +53,4 @@ table.sys b.ok { color: #17a368; } table.sys b.bad { color: #d63a40; }
 .disk .test > span { color: #5d7196; margin-right: 8px; }
 .disk .test b.ok { color: #17a368; } .disk .test b.warn { color: #b06d00; } .disk .test b.bad { color: #d63a40; }
 table.sys span.warn { color: #b06d00; font-weight: 600; } table.sys span.bad { color: #d63a40; font-weight: 600; }
+table.sys b.warn { color: #b06d00; }

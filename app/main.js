@@ -19,6 +19,9 @@ const { L } = I18N;
 app.setPath('userData', path.join(app.getPath('appData'), 'smartDisk'));
 const { readSystemInfo, mergeSensors, sensorLevel } = require('./core/sysinfo');
 const limits = require('./core/limits');
+const burnin = require('./core/burnin');
+const memtest = require('./core/memtest');
+const battery = require('./core/battery');
 const sensors = require('./core/sensors');
 
 let win = null;
@@ -569,6 +572,154 @@ ipcMain.handle('sensors:install', async () => {
 ipcMain.handle('report:make', (_e, form) => makeReport(form || {}));
 ipcMain.handle('task:start', (_e, a) => startTask(['bench', 'capacity', 'erase'].includes(a?.kind) ? a.kind : 'scan', Number(a?.disk), a?.letter));
 ipcMain.handle('task:cancel', () => { if (task) task.cancel(); return true; });
+
+// ---- burn-in test (烤机) ----
+// CPU load in worker threads, GPU load in a WebGL window, sensors every 2 s from smartdisk-sensors.exe --watch.
+// Progress is written to %ProgramData%\smartDisk\burnin.json while it runs, so if Windows freezes, restarts or loses
+// power the next start finds a "running" test and reports it as interrupted.
+const burnFile = () => path.join(process.env.ProgramData || app.getPath('userData'), 'smartDisk', 'burnin.json');
+let burn = null;
+function burnSave(run) { try { fs.mkdirSync(path.dirname(burnFile()), { recursive: true }); fs.writeFileSync(burnFile(), JSON.stringify(run)); } catch {} }
+function burnSend(ev) { if (win && !win.isDestroyed()) win.webContents.send('burn:event', ev); }
+function burnPublic(run) { return run && { ...run, samples: burnin.thin(run.samples || []) }; }
+
+// A test that was still "running" when smartPC last stopped: the PC froze, restarted or lost power.
+function burnRecover() {
+  try {
+    const run = JSON.parse(fs.readFileSync(burnFile(), 'utf8'));
+    if (run.status === 'running') {
+      run.status = 'interrupted'; run.finishedAt = run.samples?.[run.samples.length - 1]?.t ? new Date(run.samples[run.samples.length - 1].t).toISOString() : run.startedAt;
+      run.result = burnin.evaluate(run, limits.limitsOf(loadSettings()));
+      burnSave(run);
+    }
+    if (run.status && run.status !== 'running') testResults.pc = { ...testResults.pc, burn: run };
+  } catch {}
+}
+
+function burnStart(opts = {}) {
+  if (burn) return { ok: false, error: 'busy' };
+  if (task) return { ok: false, error: 'task' };
+  const minutes = Math.max(1, Math.min(60, Math.round(Number(opts.minutes) || 10)));
+  const run = { status: 'running', startedAt: new Date().toISOString(), minutes, cpu: opts.cpu !== false, gpu: !!opts.gpu, samples: [], threads: 0 };
+  const mock = process.env.SMARTDISK_MOCK === '1';
+  const b = burn = { run, latest: {}, hasSensors: false };
+  // Sensors.
+  const exe = sensorsPath();
+  if (!mock && fs.existsSync(exe)) {
+    try {
+      b.proc = spawn(exe, ['--watch', '2000'], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+      let buf = '';
+      b.proc.stdout.on('data', d => {
+        buf += d.toString();
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          try { const j = JSON.parse(line); if (j.ok) { b.latest = burnin.pick(j.sensors || []); b.hasSensors = true; } } catch {}
+        }
+      });
+      b.proc.on('error', () => {});
+    } catch {}
+  }
+  // Load.
+  if (run.cpu) { b.cpu = burnin.startCpuLoad(); run.threads = b.cpu.threads; }
+  if (run.gpu) {
+    b.gpuWin = new BrowserWindow({ width: 640, height: 380, title: L('smartPC 显卡烤机', 'smartPC GPU burn-in'), icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+    b.gpuWin.loadFile(path.join(__dirname, 'renderer', 'burn.html'));
+    b.gpuWin.on('closed', () => { b.gpuWin = null; });
+  }
+  // Sample every 2 s; demo data when there is no sensor reader (development / mock).
+  const t0 = Date.now();
+  b.timer = setInterval(() => {
+    const t = Date.now(), k = (t - t0) / 60000;
+    const sm = b.hasSensors ? { ...b.latest, t } : mock
+      ? { t, cpuTemp: Math.round((45 + 40 * (1 - Math.exp(-k * 1.5))) * 10) / 10, gpuTemp: run.gpu ? Math.round((40 + 30 * (1 - Math.exp(-k))) * 10) / 10 : null, cpuClock: 4300 - Math.round(k * 40), cpuLoad: 100, gpuLoad: run.gpu ? 99 : null, cpuPower: 58, cpuFan: 1500 }
+      : { t };
+    run.samples.push(sm);
+    burnSend({ type: 'sample', sample: sm, elapsed: Math.round((t - t0) / 1000), total: minutes * 60 });
+    if (run.samples.length % 5 === 0) burnSave(burnPublic(run));
+    if (t - t0 >= minutes * 60000) burnFinish('done');
+  }, 2000);
+  burnSave(run);
+  burnSend({ type: 'start', run: burnPublic(run) });
+  return { ok: true };
+}
+
+function burnFinish(status) {
+  const b = burn;
+  if (!b) return;
+  burn = null;
+  clearInterval(b.timer);
+  try { b.cpu?.stop(); } catch {}
+  try { if (b.gpuWin && !b.gpuWin.isDestroyed()) b.gpuWin.close(); } catch {}
+  try { b.proc?.stdin.end(); setTimeout(() => { try { b.proc.kill(); } catch {} }, 1500); } catch {}
+  const run = b.run;
+  run.status = status; run.finishedAt = new Date().toISOString();
+  run.result = burnin.evaluate(run, limits.limitsOf(loadSettings()));
+  run.samples = burnin.thin(run.samples);
+  burnSave(run);
+  testResults.pc = { ...testResults.pc, burn: run };
+  burnSend({ type: 'done', run });
+}
+
+ipcMain.handle('burn:start', (_e, o) => burnStart(o || {}));
+ipcMain.handle('burn:stop', () => { burnFinish('canceled'); return true; });
+ipcMain.handle('burn:state', () => (burn ? { running: true, run: burnPublic(burn.run) } : { running: false, run: testResults.pc?.burn || null }));
+app.on('will-quit', () => { if (burn) burnFinish('canceled'); if (mem) mem.stop(); });
+
+// ---- memory test ----
+let mem = null;
+ipcMain.handle('mem:start', (_e, o) => {
+  if (mem) return { ok: false, error: 'busy' };
+  if (burn) return { ok: false, error: 'burn' };
+  const passes = Math.max(1, Math.min(5, Number(o?.passes) || 1));
+  const acc = { status: 'running', passes, startedAt: new Date().toISOString(), pct: 0, errors: 0 };
+  const send = ev => { if (win && !win.isDestroyed()) win.webContents.send('mem:event', ev); };
+  if (process.env.SMARTDISK_MOCK === '1') {   // demo
+    let p = 0; const t = setInterval(() => { p += 5; send({ type: 'progress', pct: p, errors: 0, pass: 1 });
+      if (p >= 100) { clearInterval(t); mem = null; Object.assign(acc, { status: 'done', errors: 0, testedBytes: 12 * 1024 ** 3, finishedAt: new Date().toISOString(), pct: 100 }); testResults.pc = { ...testResults.pc, mem: acc }; send({ type: 'done', result: acc }); } }, 300);
+    mem = { stop: () => clearInterval(t) };
+    send({ type: 'start', planBytes: 12 * 1024 ** 3, totalBytes: 16 * 1024 ** 3 });
+    return { ok: true };
+  }
+  mem = memtest.quickTest({ passes, onEvent: ev => {
+    if (ev.type === 'start') Object.assign(acc, { planBytes: ev.planBytes, totalBytes: ev.totalBytes });
+    if (ev.type === 'progress') Object.assign(acc, { pct: ev.pct, errors: ev.errors });
+    if (ev.type === 'done') {
+      mem = null;
+      Object.assign(acc, { status: ev.stopped ? 'canceled' : ev.error ? 'error' : 'done', errors: ev.errors, bad: ev.bad, testedBytes: ev.testedBytes, error: ev.error, finishedAt: new Date().toISOString() });
+      if (acc.status !== 'canceled') testResults.pc = { ...testResults.pc, mem: acc };
+      send({ type: 'done', result: acc });
+      return;
+    }
+    send(ev);
+  } });
+  return { ok: true };
+});
+ipcMain.handle('mem:stop', () => { if (mem) mem.stop(); return true; });
+ipcMain.handle('mem:state', async () => ({ running: !!mem, last: testResults.pc?.mem || null,
+  full: process.env.SMARTDISK_MOCK === '1' ? { ok: true, id: 1201, time: '2026-11-20T10:12:00Z' } : await memtest.lastFullResult().catch(() => null) }));
+ipcMain.handle('mem:full', async () => {
+  const r = await dialog.showMessageBox(win, { type: 'question', buttons: [L('现在重启并测试', 'Restart and test now'), L('下次重启时测试', 'Test at the next restart'), L('取消', 'Cancel')], cancelId: 2, title: 'smartPC',
+    message: L('用 Windows 内存诊断做完整测试？', 'Run the full Windows Memory Diagnostic?'),
+    detail: L('电脑会重启进入蓝色的内存诊断画面（约 10 到 30 分钟），测完自动回到 Windows。回来后打开 smartPC 就能看到结果。请先保存好工作。',
+      'The PC restarts into the blue memory diagnostic screen (about 10 to 30 minutes) and returns to Windows by itself. Open smartPC afterwards to see the result. Save your work first.') });
+  if (r.response === 2) return { ok: false, canceled: true };
+  const s = await memtest.scheduleFull();
+  if (s.ok && r.response === 0) execFile('shutdown.exe', ['/r', '/t', '5'], { windowsHide: true }, () => {});
+  return { ...s, restart: r.response === 0 };
+});
+
+// ---- full battery report ----
+let batCache = null;
+ipcMain.handle('battery:read', async () => {
+  if (process.env.SMARTDISK_MOCK === '1') return { ok: true, report: { name: 'DELL 51KD7', maker: 'SMP', chemistry: 'LiP', design: 51000, full: 40120, cycles: 312, wear: 21.3, runtimeNow: 253, runtimeNew: 320,
+    history: Array.from({ length: 24 }, (_, i) => ({ date: `2025-${String((i % 12) + 1).padStart(2, '0')}-01`, full: 50500 - i * 430, design: 51000 })) } };
+  batCache = await battery.read();
+  if (batCache.ok) testResults.pc = { ...testResults.pc, battery: batCache.report };
+  return { ok: batCache.ok, report: batCache.report, error: batCache.error, hasHtml: !!batCache.htmlFile };
+});
+ipcMain.handle('battery:html', () => { if (batCache?.htmlFile) shell.openPath(batCache.htmlFile); return !!batCache?.htmlFile; });
 ipcMain.handle('task:results', () => testResults);
 ipcMain.handle('selftest', (_e, a) => selfTest(Number(a?.disk), ['short', 'long', 'abort'].includes(a?.what) ? a.what : 'status'));
 ipcMain.handle('update:check', () => checkUpdate(win, true));
@@ -584,6 +735,7 @@ app.whenReady().then(() => {
     startMonitor();
     return;
   }
+  burnRecover();
   createWindow();
   // Make sure the logon task exists (the shop's first run sets it up), unless monitoring was turned off.
   if (loadMonitor().enabled !== false) setMonitorTask(true);
