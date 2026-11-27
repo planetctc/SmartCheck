@@ -1,6 +1,12 @@
 smartCheck（原名 smartDisk、smartPC）版本记录 / Version history
 （最新的在最上面 / newest first）
 
+0.19.4  2026-11-27
+  - 烤机测试可以选测什么：CPU + 显卡、只测 CPU、只测显卡。会记住上次的选择，报告也写明测了哪个。
+  - NVMe 硬盘显示有没有 DRAM 缓存：没有 DRAM 的（DRAM-less，用电脑内存当缓存 HMB）会显示「无（用 HMB xx MB）」，报告也有。
+    SATA 硬盘没办法从软件判断，所以不显示。
+  - 修正：已经是最新版时，更新检查不会再提示安装比较旧的版本。
+
 0.19.3  2026-11-27
   - 程序加上 PLANET COMPUTER TECHNOLOGY CENTRE 的数字签名（smartCheck、安装程序和检测程序都签）。
     电脑装过 PLANET 证书后，Windows 会显示发行者是 PLANET，不再是「未知发行者」。

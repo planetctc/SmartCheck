@@ -88,6 +88,7 @@ function metricsFor(d, s) {
   list.push(metric(L('接口速度', 'Interface'), l ? l.text : '--', '', (l && l.state === 'warn' ? 'alert ' : '') + 'txt'));
   const [kt, ...kr] = (s.kind || '--').split(' ');
   list.push(metric(L('类型', 'Type'), kt, kr.join(' '), 'txt'));
+  if (s.dram) list.push(metric(L('DRAM 缓存', 'DRAM cache'), s.dram.has ? L('有', 'Yes') : L('无', 'No'), s.dram.has ? '' : `HMB ${s.dram.hmbMB} MB`, 'txt'));
   return list.join('');
 }
 
@@ -751,7 +752,7 @@ async function autoNext() {
   const items = pcItems(), todo = k => items.find(x => x.key === k)?.state === 'todo';
   if (todo('burn')) {
     checkStep = 'burn'; render();
-    const r = await window.smartdisk.burnStart({ minutes: 10, cpu: true, gpu: true, level: burnLevelPref() });
+    const r = await window.smartdisk.burnStart({ minutes: 10, ...burnWhatOpts(burnWhatPref()), level: burnLevelPref() });
     if (!r?.ok) { autoRun = false; render(); }
     return;
   }
@@ -1054,6 +1055,9 @@ function burnChart(samples, gpu) {
     <text x="${padL}" y="${H - 4}">0</text><text x="${W - padR}" y="${H - 4}" text-anchor="end">${mins} ${L('分钟', 'min')}</text></svg>
     <div class="legend-row small muted"><i class="lg-c"></i>CPU °C ${gpu ? `<i class="lg-g"></i>${L('显卡', 'GPU')} °C` : ''} <i class="lg-l"></i>${L('过热门槛', 'Too-hot limit')}</div>`;
 }
+function burnWhatPref() { try { const v = localStorage.getItem('burnWhat'); return ['cpu', 'gpu'].includes(v) ? v : 'both'; } catch { return 'both'; } }
+const burnWhatOpts = w => ({ cpu: w !== 'gpu', gpu: w !== 'cpu' });
+const burnWhatText = r => (r?.cpu === false ? L('显卡', 'GPU') : r?.gpu ? L('CPU + 显卡', 'CPU + GPU') : 'CPU');
 function burnLevelPref() { try { return localStorage.getItem('burnLevel') === 'std' ? 'std' : 'high'; } catch { return 'high'; } }
 const burnLevelText = r => (r?.level === 'std' ? L('标准', 'standard') : r?.level === 'high' ? L('高强度', 'high intensity') : '');
 function burnStat(k, v, cls = '') { return `<div class="burn-stat"><span class="k">${k}</span><span class="v ${cls}">${v}</span></div>`; }
@@ -1083,30 +1087,31 @@ function renderBurn() {
     const r = run?.result;
     const [vt, vc] = r ? (BURN_VERDICT()[r.verdict] || BURN_VERDICT().canceled) : [];
     const last = r ? `<div class="burn-res"><div class="burn-verdict ${vc}">${vt}</div>
-        <div class="small muted">${new Date(run.finishedAt || run.startedAt).toLocaleString()} · ${Math.round((r.seconds || 0) / 60)} ${L('分钟', 'min')}${run.gpu ? L(' · CPU + 显卡', ' · CPU + GPU') : ' · CPU'}${burnLevelText(run) ? ' · ' + burnLevelText(run) : ''}</div>
+        <div class="small muted">${new Date(run.finishedAt || run.startedAt).toLocaleString()} · ${Math.round((r.seconds || 0) / 60)} ${L('分钟', 'min')} · ${burnWhatText(run)}${run.cpu !== false && burnLevelText(run) ? ' · ' + burnLevelText(run) : ''}</div>
         <div class="burn-stats">
           ${burnStat(L('CPU 最高', 'CPU max'), r.cpuMax != null ? `${r.cpuMax} °C` : '-', lv(r.cpuMax, cw, cb))}
           ${run.gpu ? burnStat(L('显卡最高', 'GPU max'), r.gpuMax != null ? `${r.gpuMax} °C` : '-', lv(r.gpuMax, gw, gb)) : ''}
-          ${burnStat(L('CPU 频率', 'CPU clock'), r.clockStart ? `${r.clockStart} → ${r.clockEnd || '-'} MHz` : '-', r.throttle ? 'st-warn' : '')}
-          ${burnStat(L('最高功耗', 'Max power'), r.cpuPowerMax != null ? `${r.cpuPowerMax} W` : '-')}
+          ${run.cpu !== false ? burnStat(L('CPU 频率', 'CPU clock'), r.clockStart ? `${r.clockStart} → ${r.clockEnd || '-'} MHz` : '-', r.throttle ? 'st-warn' : '') : ''}
+          ${run.cpu !== false ? burnStat(L('最高功耗', 'Max power'), r.cpuPowerMax != null ? `${r.cpuPowerMax} W` : '-') : ''}
         </div>
         ${r.reasons?.length ? `<ul class="reasons burn-reasons">${r.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : r.verdict === 'pass' ? `<div class="small st-ok">${L('温度正常，没有降频，过程中没有死机。', 'Temperatures normal, no throttling, no freeze.')}</div>` : ''}
-        ${r.noTemp ? `<div class="small muted">${L('没有读到 CPU 温度：请在「本机信息」安装传感器驱动后再测。', 'No CPU temperature was read: install the sensor driver on the Overview tab and test again.')}</div>` : ''}
+        ${r.noTemp ? `<div class="small muted">${run.cpu === false ? L('没有读到显卡温度。', 'No GPU temperature was read.') : L('没有读到 CPU 温度：请在「硬件与温度」安装传感器驱动后再测。', 'No CPU temperature was read: install the sensor driver on the Hardware page and test again.')}</div>` : ''}
         ${burnChart(run.samples, run.gpu)}</div>` : '';
     body = `<div class="small muted">${L('让 CPU（和显卡）满载一段时间，看散热够不够、会不会降频或死机。测试中电脑会变热、风扇变大声，请不要同时做其他测试。',
       'Runs the CPU (and graphics card) at full load to check cooling, throttling and stability. The PC gets hot and loud; do not run other tests at the same time.')}</div>
       <div class="burn-opts">
         <label>${L('时间', 'Duration')} <select id="burnMin">${[5, 10, 20, 30].map(m => `<option value="${m}"${m === 10 ? ' selected' : ''}>${m} ${L('分钟', 'min')}</option>`).join('')}</select></label>
         <label>${L('强度', 'Intensity')} <select id="burnLevel"><option value="high"${burnLevelPref() === 'high' ? ' selected' : ''}>${L('高强度（接近 Prime95）', 'High (like Prime95)')}</option><option value="std"${burnLevelPref() === 'std' ? ' selected' : ''}>${L('标准', 'Standard')}</option></select></label>
-        <label class="check"><input type="checkbox" id="burnGpu" checked> ${L('显卡', 'Graphics card')}</label>
+        <label>${L('测试', 'Test')} <select id="burnWhat">${[['both', L('CPU + 显卡', 'CPU + GPU')], ['cpu', L('只测 CPU', 'CPU only')], ['gpu', L('只测显卡', 'GPU only')]].map(([v, t]) => `<option value="${v}"${burnWhatPref() === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
         <button class="go primary" id="burnGo">${L('开始烤机', 'Start burn-in')}</button>
       </div><div id="burnMsg" class="small"></div>${last}`;
   }
   el.innerHTML = `<div class="tool burn-tool"><h3>${L('烤机测试', 'Burn-in test')} <small class="muted">${L('结果会印进检测报告', 'printed on the inspection report')}</small></h3>${body}</div>`;
   $('#burnStop')?.addEventListener('click', () => window.smartdisk.burnStop());
   $('#burnGo')?.addEventListener('click', async () => {
-    const level = $('#burnLevel').value; try { localStorage.setItem('burnLevel', level); } catch {}
-    const r = await window.smartdisk.burnStart({ minutes: +$('#burnMin').value, cpu: true, gpu: $('#burnGpu').checked, level });
+    const level = $('#burnLevel').value, what = $('#burnWhat').value;
+    try { localStorage.setItem('burnLevel', level); localStorage.setItem('burnWhat', what); } catch {}
+    const r = await window.smartdisk.burnStart({ minutes: +$('#burnMin').value, ...burnWhatOpts(what), level });
     if (!r?.ok) $('#burnMsg').textContent = r?.error === 'task' ? L('请先等硬盘测试完成。', 'Wait for the drive test to finish first.') : r?.error === 'mem' ? L('请先等内存测试完成。', 'Wait for the memory test to finish first.') : L('已经在烤机中。', 'A burn-in is already running.');
   });
 }

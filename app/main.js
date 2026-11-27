@@ -657,7 +657,7 @@ function burnStart(opts = {}) {
   if (task) return { ok: false, error: 'task' };
   if (mem) return { ok: false, error: 'mem' };
   const minutes = Math.max(1, Math.min(60, Math.round(Number(opts.minutes) || 10)));
-  const run = { status: 'running', startedAt: new Date().toISOString(), minutes, cpu: opts.cpu !== false, gpu: !!opts.gpu, level: opts.level === 'std' ? 'std' : 'high', samples: [], threads: 0 };
+  const run = { status: 'running', startedAt: new Date().toISOString(), minutes, cpu: opts.cpu !== false || !opts.gpu, gpu: !!opts.gpu, level: opts.level === 'std' ? 'std' : 'high', samples: [], threads: 0 };
   const mock = process.env.SMARTDISK_MOCK === '1';
   const b = burn = { run, latest: {}, hasSensors: false };
   liveStop();   // the burn-in's watcher takes over
