@@ -915,7 +915,7 @@ $('#reportForm').addEventListener('submit', async (e) => {
 // ---- settings (shop info + WhatsApp button for customer alerts) ----
 const SET_FIELDS = ['lang', 'shopName', 'shopAddress', 'shopContact', 'whatsapp', 'remoteCustomer', 'remoteUrl', 'smartaccUrl', 'smartaccUser',
   'lim_drop', 'lim_hdd', 'lim_ssd', 'lim_nvme', 'lim_cpu_w', 'lim_cpu_b', 'lim_gpu_w', 'lim_gpu_b', 'lim_board_w', 'lim_board_b'];
-const FEAT_FIELDS = ['f_bench', 'f_scan', 'f_selftest', 'f_grade', 'f_history', 'f_capacity', 'f_erase', 'f_sensors', 'f_burn', 'f_memtest', 'f_battery'];
+const FEAT_FIELDS = ['f_bench', 'f_scan', 'f_selftest', 'f_grade', 'f_history', 'f_capacity', 'f_erase', 'f_sensors', 'f_burn', 'f_memtest', 'f_battery', 'f_autoupdate'];
 const LIM_DEFAULTS = { lim_drop: 2, lim_hdd: 60, lim_ssd: 70, lim_nvme: 80, lim_cpu_w: 85, lim_cpu_b: 95, lim_gpu_w: 83, lim_gpu_b: 90, lim_board_w: 75, lim_board_b: 90 };
 let appSettings = {};
 let detailTab = 'overview';

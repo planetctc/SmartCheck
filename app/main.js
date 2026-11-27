@@ -537,8 +537,10 @@ function startMonitor(fromApp) {
   setTimeout(() => monitorCheck(false), 2 * 60 * 1000);
   setInterval(() => monitorCheck(false), CHECK_EVERY_MS);
   // Installed copies on customer PCs update themselves quietly; the new version installs when Windows restarts.
-  setTimeout(() => checkUpdateSilent(), 10 * 60 * 1000);
-  setInterval(() => checkUpdateSilent(), 24 * 3600 * 1000);
+  // Settings → 自动更新 off: no quiet downloads; the shop can still click 检查更新.
+  const autoUpd = () => { if (limits.featureOn(loadSettings(), 'autoupdate')) checkUpdateSilent(); };
+  setTimeout(autoUpd, 10 * 60 * 1000);
+  setInterval(autoUpd, 24 * 3600 * 1000);
 }
 
 ipcMain.handle('disks:scan', async () => { const r = await scanDisks(); updateMonitor(r, false); return r; });
@@ -834,7 +836,7 @@ app.whenReady().then(() => {
   // Make sure the logon task exists (the shop's first run sets it up), unless monitoring was turned off.
   if (loadMonitor().enabled !== false) setMonitorTask(true);
   // Look for a new version shortly after start (installed version only).
-  setTimeout(() => checkUpdate(win, false), 15000);
+  setTimeout(() => { if (limits.featureOn(loadSettings(), 'autoupdate')) checkUpdate(win, false); }, 15000);
 });
 app.on('window-all-closed', () => {
   if (task) task.cancel();
