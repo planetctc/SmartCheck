@@ -1,7 +1,7 @@
 {
   "name": "smartdisk",
   "productName": "smartCheck",
-  "version": "0.19.2",
+  "version": "0.19.3",
   "description": "smartCheck - 电脑健康检测",
   "main": "app/main.js",
   "private": true,
@@ -64,6 +64,7 @@
         }
       ],
       "requestedExecutionLevel": "requireAdministrator",
+      "verifyUpdateCodeSignature": false,
       "icon": "build/icon.ico"
     },
     "nsis": {

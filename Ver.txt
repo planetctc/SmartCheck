@@ -1,6 +1,11 @@
 smartCheck（原名 smartDisk、smartPC）版本记录 / Version history
 （最新的在最上面 / newest first）
 
+0.19.3  2026-11-27
+  - 程序加上 PLANET COMPUTER TECHNOLOGY CENTRE 的数字签名（smartCheck、安装程序和检测程序都签）。
+    电脑装过 PLANET 证书后，Windows 会显示发行者是 PLANET，不再是「未知发行者」。
+  - 没有装证书的电脑（例如同行）照样可以安装和自动更新。
+
 0.19.2  2026-11-26
   - 远程服务的后台地址已经内建：客户电脑只要贴授权码、填客户名称就可以，不用再打网址。
   - 硬盘状态判断更严格：有「待映射扇区」或「无法修正扇区」、重映射扇区达到 100 个、健康度掉到 0%、
