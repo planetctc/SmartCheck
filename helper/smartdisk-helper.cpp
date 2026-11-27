@@ -87,6 +87,9 @@ struct Disk {
     int rpm = 0;                                // 1 = SSD (non-rotating), >1 = RPM, 0 = unknown
     std::string bridge;                         // USB: how SMART was read (sat / asmedia / realtek / ata)
     unsigned usbVid = 0, usbPid = 0;
+    // NVMe Host Memory Buffer (Identify Controller HMPRE/HMMIN, 4 KiB units). >0 = DRAM-less drive using HMB.
+    bool hasIdentify = false;
+    uint32_t hmbPref = 0, hmbMin = 0;
 };
 
 // ---------- helpers ----------
@@ -242,6 +245,10 @@ static void readNvmeIdentify(HANDLE h, Disk& d) {
     if (!sn.empty()) d.serial = sn;
     if (!mn.empty()) d.model = mn;
     if (!fr.empty()) d.firmware = fr;
+    auto le32 = [](const BYTE* b) { return (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) | ((uint32_t)b[3] << 24); };
+    d.hmbPref = le32(id + 272);
+    d.hmbMin = le32(id + 276);
+    d.hasIdentify = true;
 }
 
 // ---------- NVMe health log (page 0x02) ----------
@@ -554,6 +561,8 @@ static void writeDisk(std::ostringstream& o, const Disk& d, const char* ind) {
           << ",\"unsafeShutdowns\":" << n.unsafeShutdowns << ",\"mediaErrors\":" << n.mediaErrors
           << ",\"errorLogEntries\":" << n.errorLogEntries << "}";
     }
+    if (d.hasIdentify)
+        o << ",\"hmb\":{\"prefKiB\":" << (uint64_t)d.hmbPref * 4 << ",\"minKiB\":" << (uint64_t)d.hmbMin * 4 << "}";
     o << "}";
 }
 

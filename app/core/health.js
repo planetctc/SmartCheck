@@ -189,6 +189,17 @@ function linkInfo(disk) {
   return { text, max: fmt(l.max, l.maxWidth), note, state };
 }
 
+// NVMe DRAM: a drive that asks the PC for a Host Memory Buffer (HMB) has no DRAM cache of its own.
+function dramInfo(disk) {
+  const h = disk.hmb;
+  if (!h || disk.bus !== 'nvme') return null;
+  if (h.prefKiB > 0) {
+    const mb = Math.round(h.prefKiB / 1024);
+    return { has: false, hmbMB: mb, text: L(`无（用 HMB ${mb} MB）`, `No (HMB ${mb} MB)`) };
+  }
+  return { has: true, hmbMB: 0, text: L('有', 'Yes') };
+}
+
 function clamp(v) { return Math.max(0, Math.min(100, Math.round(v))); }
 
 function evaluate(disk) {
@@ -196,6 +207,7 @@ function evaluate(disk) {
     ? { health: null, status: 'unknown', reasons: [disk.error || L('无法读取 SMART', 'SMART could not be read')], temperatureC: null, rows: [] }
     : disk.nvme ? evaluateNvme(disk) : evaluateAta(disk);
   base.link = linkInfo(disk);
+  base.dram = dramInfo(disk);
   base.firmwareWarning = firmwareWarning(disk);
   base.kind = disk.rpm === 1 ? 'SSD' : disk.rpm > 1 ? `HDD ${disk.rpm} RPM` : '';
   base.refurb = refurbCheck(disk, base);

@@ -63,7 +63,7 @@ function evaluate(run, lim = {}) {
   return {
     verdict, reasons, cpuMax, gpuMax, throttle, clockStart: early, clockEnd: late,
     cpuPowerMax: max(vals('cpuPower')), cpuFanMax: max(vals('cpuFan')),
-    seconds: Math.round((tN - t0) / 1000), noTemp: cpuMax == null,
+    seconds: Math.round((tN - t0) / 1000), noTemp: run.cpu === false ? gpuMax == null : cpuMax == null,
   };
 }
 

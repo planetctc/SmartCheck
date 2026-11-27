@@ -12,7 +12,16 @@ let downloading = false;
 let downloadedVer = '';   // version already downloaded and waiting to install
 let laterVer = '';
 let showDialog = false;   // a person asked for this download in a window: show progress and the restart dialog
-let winRef = null;        // the main window at the time of the last call (it can be closed and reopened)
+let winRef = null;
+
+// Only a higher version is an update. A test build installed by hand (e.g. 0.19.3 before it is published) must not be
+// offered the older published version (0.19.2) as an "update".
+function isNewer(v, cur = app.getVersion()) {
+  const p = x => String(x || '').split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
+  const a = p(v), b = p(cur);
+  for (let i = 0; i < 3; i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  return false;
+}        // the main window at the time of the last call (it can be closed and reopened)
 
 const liveWin = () => (winRef && !winRef.isDestroyed() ? winRef : BrowserWindow.getAllWindows().find(w => !w.isDestroyed()) || null);
 
@@ -44,6 +53,7 @@ function getUpdater() {
   try {
     const { autoUpdater } = require('electron-updater');
     autoUpdater.autoDownload = false;
+    autoUpdater.allowDowngrade = false;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.on('download-progress', p => { if (showDialog) status('progress', { pct: Math.round(p.percent || 0) }); });
     autoUpdater.on('update-downloaded', info => {
@@ -73,7 +83,7 @@ async function checkUpdate(win, manual) {
   try {
     const r = await u.checkForUpdates();
     const info = r && r.updateInfo;
-    const newer = info && info.version && info.version !== app.getVersion() && r.isUpdateAvailable !== false;
+    const newer = info && info.version && isNewer(info.version);
     if (!newer) { if (manual) say('info', L(`已经是最新版本（${app.getVersion()}）。`, `You have the latest version (${app.getVersion()}).`)); return { ok: true, latest: true }; }
     if (downloadedVer === info.version) { await askRestart(info.version); return { ok: true }; }
     if (!manual && info.version === laterVer) return { ok: true };
@@ -103,7 +113,7 @@ async function checkUpdateSilent() {
   try {
     const r = await u.checkForUpdates();
     const info = r && r.updateInfo;
-    if (!info || !info.version || info.version === app.getVersion() || r.isUpdateAvailable === false) return;
+    if (!info || !info.version || !isNewer(info.version)) return;
     downloading = true;
     await u.downloadUpdate();
   } catch { downloading = false; }
