@@ -34,14 +34,41 @@ jobs:
         run: |
           v=$(node -p "require('./package.json').version")
           [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "Tag ${GITHUB_REF_NAME} does not match package.json version $v"; exit 1; }
+      - name: Build helper, DiskSpd and sensors
+        run: |
+          npm run build:helper
+          npm run build:diskspd
+          npm run build:sensors
+      # Code signing with PLANET's own certificate (optional). Repository secrets, set by the shop owner:
+      #   CODESIGN_PFX       the .pfx file as base64 (one line)
+      #   CODESIGN_PASSWORD  the .pfx password
+      # Without them the build is unsigned, as before.
+      - name: Sign helper programs
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.CODESIGN_PFX }}
+          PFX_PW: ${{ secrets.CODESIGN_PASSWORD }}
+        run: |
+          if (-not $env:PFX) { Write-Host "CODESIGN_PFX not set: building unsigned."; exit 0 }
+          $pfx = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX.Trim()))
+          $st = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          $files = @('helper/build/Release/smartdisk-helper.exe', 'third_party/diskspd/diskspd_vs/x64/Release/diskspd.exe') + (Get-ChildItem sensors/out -Filter smartdisk-*.exe | ForEach-Object FullName)
+          foreach ($f in $files) {
+            & $st.FullName sign /f $pfx /p $env:PFX_PW /fd sha256 /tr http://timestamp.digicert.com /td sha256 $f
+            if ($LASTEXITCODE -ne 0) { throw "signing failed: $f" }
+          }
+          # electron-builder signs smartCheck.exe, the installer and the uninstaller with the same certificate.
+          "CSC_LINK=$pfx" >> $env:GITHUB_ENV
+          "CSC_KEY_PASSWORD=$env:PFX_PW" >> $env:GITHUB_ENV
       - name: Build
         if: env.PUBLISH != 'true'
-        run: npm run dist
+        run: npx electron-builder --win nsis --x64 --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - name: Build and publish release
         if: env.PUBLISH == 'true'
-        run: npm run release
+        run: npx electron-builder --win nsis --x64 --publish always
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}

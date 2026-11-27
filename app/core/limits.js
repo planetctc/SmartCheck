@@ -1,7 +1,7 @@
 // Feature switches and warning limits the shop can change in Settings (stored as strings in settings.json).
 // Pure Node so main.js, the monitor and the tests share the same defaults.
 
-const FEATURES = ['bench', 'scan', 'selftest', 'grade', 'history', 'capacity', 'erase', 'sensors', 'burn', 'memtest', 'battery'];
+const FEATURES = ['bench', 'scan', 'selftest', 'grade', 'history', 'capacity', 'erase', 'sensors', 'burn', 'memtest', 'battery', 'autoupdate'];
 
 // [settings key, default, min, max]
 const LIMITS = {
