@@ -672,7 +672,7 @@ function burnStart(opts = {}) {
         let i;
         while ((i = buf.indexOf('\n')) >= 0) {
           const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-          try { const j = JSON.parse(line); if (j.ok) { b.latest = burnin.pick(j.sensors || []); b.hasSensors = true; liveSend(j.sensors || []); } } catch {}
+          try { const j = JSON.parse(line); if (j.ok) { b.latest = burnin.pick(j.sensors || []); b.hasSensors = true; if (b.vramMB == null) b.vramMB = burnin.vramOf(j.sensors || []); liveSend(j.sensors || []); } } catch {}
         }
       });
       b.proc.on('error', () => {});
@@ -692,9 +692,10 @@ function burnStart(opts = {}) {
   if (run.cpu && !b.cpu) { b.cpu = burnin.startCpuLoad(); run.threads = b.cpu.threads; run.engine = 'js'; if (run.level === 'high' && !mock) run.level = 'std'; }
   if (run.gpu) {
     b.gpuWin = new BrowserWindow({ width: 640, height: 380, title: L('smartCheck 显卡烤机', 'smartCheck GPU burn-in'), icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
-      webPreferences: { contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+      webPreferences: { preload: path.join(__dirname, 'burn-preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     b.gpuWin.loadFile(path.join(__dirname, 'renderer', 'burn.html'));
-    b.gpuWin.on('closed', () => { b.gpuWin = null; });
+    b.gpuWin.on('closed', () => { b.gpuWin = null; if (burn === b) run.gpuClosed = true; });
+    b.gpuWin.webContents.on('render-process-gone', () => { if (burn === b) run.gpuCrash = true; });
   }
   // Sample every 2 s; demo data when there is no sensor reader (development / mock).
   const t0 = Date.now();
@@ -712,6 +713,18 @@ function burnStart(opts = {}) {
   burnSend({ type: 'start', run: burnPublic(run) });
   return { ok: true };
 }
+
+// GPU window: how much VRAM the card has (from the sensor reader, waits up to 6 s for it), and its live results.
+ipcMain.handle('burn:gpuConfig', async () => {
+  for (let i = 0; i < 30 && burn && burn.vramMB == null && burn.proc; i++) await new Promise(r => setTimeout(r, 200));
+  return { vramMB: burn?.vramMB || (process.env.SMARTDISK_MOCK === '1' ? 8192 : null) };
+});
+ipcMain.on('burn:gpuStat', (e, s) => {
+  if (!burn || !s || typeof s !== 'object') return;
+  const n = v => (Number.isFinite(+v) ? +v : 0);
+  burn.run.gpuStat = { ok: !!s.ok, lost: !!s.lost, fps: n(s.fps), passes: n(s.passes), vramTargetMB: n(s.vramTargetMB), vramTestedMB: n(s.vramTestedMB),
+    rounds: n(s.rounds), errors: n(s.errors), badMB: Array.isArray(s.badMB) ? s.badMB.slice(0, 20).map(n) : [] };
+});
 
 function burnFinish(status) {
   const b = burn;
