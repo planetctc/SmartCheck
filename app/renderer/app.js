@@ -1057,6 +1057,7 @@ function burnChart(samples, gpu) {
 }
 function burnWhatPref() { try { const v = localStorage.getItem('burnWhat'); return ['cpu', 'gpu'].includes(v) ? v : 'both'; } catch { return 'both'; } }
 const burnWhatOpts = w => ({ cpu: w !== 'gpu', gpu: w !== 'cpu' });
+const vramText = mb => (mb >= 1024 ? `${Math.round(mb / 1024 * 10) / 10} GB` : `${mb} MB`);
 const burnWhatText = r => (r?.cpu === false ? L('显卡', 'GPU') : r?.gpu ? L('CPU + 显卡', 'CPU + GPU') : 'CPU');
 function burnLevelPref() { try { return localStorage.getItem('burnLevel') === 'std' ? 'std' : 'high'; } catch { return 'high'; } }
 const burnLevelText = r => (r?.level === 'std' ? L('标准', 'standard') : r?.level === 'high' ? L('高强度', 'high intensity') : '');
@@ -1091,13 +1092,15 @@ function renderBurn() {
         <div class="burn-stats">
           ${burnStat(L('CPU 最高', 'CPU max'), r.cpuMax != null ? `${r.cpuMax} °C` : '-', lv(r.cpuMax, cw, cb))}
           ${run.gpu ? burnStat(L('显卡最高', 'GPU max'), r.gpuMax != null ? `${r.gpuMax} °C` : '-', lv(r.gpuMax, gw, gb)) : ''}
+          ${run.gpu && r.vram ? burnStat(L('显存检测', 'VRAM check'), r.vram.errors ? L(`${r.vram.errors} 次错误`, `${r.vram.errors} errors`) : `${vramText(r.vram.testedMB)} · ${L('没错误', 'OK')}`, r.vram.errors ? 'st-bad' : 'st-ok') : ''}
+          ${run.cpu === false ? burnStat(L('显卡负载', 'GPU load'), r.gpuLoadAvg != null ? `${r.gpuLoadAvg} %` : '-') : ''}
           ${run.cpu !== false ? burnStat(L('CPU 频率', 'CPU clock'), r.clockStart ? `${r.clockStart} → ${r.clockEnd || '-'} MHz` : '-', r.throttle ? 'st-warn' : '') : ''}
           ${run.cpu !== false ? burnStat(L('最高功耗', 'Max power'), r.cpuPowerMax != null ? `${r.cpuPowerMax} W` : '-') : ''}
         </div>
         ${r.reasons?.length ? `<ul class="reasons burn-reasons">${r.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : r.verdict === 'pass' ? `<div class="small st-ok">${L('温度正常，没有降频，过程中没有死机。', 'Temperatures normal, no throttling, no freeze.')}</div>` : ''}
         ${r.noTemp ? `<div class="small muted">${run.cpu === false ? L('没有读到显卡温度。', 'No GPU temperature was read.') : L('没有读到 CPU 温度：请在「硬件与温度」安装传感器驱动后再测。', 'No CPU temperature was read: install the sensor driver on the Hardware page and test again.')}</div>` : ''}
         ${burnChart(run.samples, run.gpu)}</div>` : '';
-    body = `<div class="small muted">${L('让 CPU（和显卡）满载一段时间，看散热够不够、会不会降频或死机。测试中电脑会变热、风扇变大声，请不要同时做其他测试。',
+    body = `<div class="small muted">${L('让 CPU（和显卡）满载一段时间，看散热够不够、会不会降频或死机。测显卡时也会检查显存有没有坏。测试中电脑会变热、风扇变大声，请不要同时做其他测试。',
       'Runs the CPU (and graphics card) at full load to check cooling, throttling and stability. The PC gets hot and loud; do not run other tests at the same time.')}</div>
       <div class="burn-opts">
         <label>${L('时间', 'Duration')} <select id="burnMin">${[5, 10, 20, 30].map(m => `<option value="${m}"${m === 10 ? ' selected' : ''}>${m} ${L('分钟', 'min')}</option>`).join('')}</select></label>

@@ -31,6 +31,12 @@ function pick(raw, t = Date.now()) {
   };
 }
 
+// Dedicated VRAM of the graphics card in MB (NVIDIA / AMD; integrated graphics share system memory), or null.
+function vramOf(raw) {
+  const m = raw.filter(x => /^Gpu(Nvidia|Amd)/.test(x.hw) && x.type === 'SmallData' && /^(GPU|D3D Dedicated) Memory Total$/i.test(x.name)).map(x => x.value);
+  return m.length ? Math.round(Math.max(...m)) : null;
+}
+
 // Result from the samples. lim = limits.limitsOf(settings): { cpuWarn, cpuBad, gpuWarn, gpuBad }.
 // status: done | canceled | interrupted (smartCheck or Windows stopped during the test: crash, freeze or power cut).
 function evaluate(run, lim = {}) {
@@ -58,11 +64,20 @@ function evaluate(run, lim = {}) {
     if (gpuMax >= (lim.gpuBad ?? 90)) { worse('fail'); reasons.push(L(`显卡最高 ${gpuMax} °C，达到过热门槛 ${lim.gpuBad ?? 90} °C`, `GPU reached ${gpuMax} °C, at the too-hot limit of ${lim.gpuBad ?? 90} °C`)); }
     else if (gpuMax >= (lim.gpuWarn ?? 83)) { worse('warn'); reasons.push(L(`显卡最高 ${gpuMax} °C，偏高`, `GPU reached ${gpuMax} °C, on the high side`)); }
   }
+  const g = run.gpuStat;
+  if (run.gpu) {
+    if (run.gpuCrash || g?.lost) { worse('fail'); reasons.push(L('显卡驱动在测试中重置或崩溃了（显卡不稳定、超频过头或供电不足）', 'The graphics driver reset or crashed during the test (unstable card, overclock or power supply)')); }
+    if (g?.errors) { worse('fail'); reasons.push(L(`显存检测发现 ${g.errors} 次错误：显存可能坏了，或显存超频不稳定`, `VRAM check found ${g.errors} errors: faulty video memory or an unstable memory overclock`)); }
+    if (g && !g.ok && !g.lost) { worse('warn'); reasons.push(L('显卡烤机没有开始：这台电脑不支持 WebGL2（请更新显卡驱动）', 'The GPU burn-in did not start: WebGL2 is not available (update the graphics driver)')); }
+    if (run.gpuClosed && !run.gpuCrash) { worse('warn'); reasons.push(L('显卡烤机窗口中途被关掉了', 'The GPU burn-in window was closed early')); }
+  }
+  const gpuLoadAvg = vals('gpuLoad').length ? Math.round(vals('gpuLoad').reduce((a, b) => a + b, 0) / vals('gpuLoad').length) : null;
   if (throttle) { worse('warn'); reasons.push(L(`CPU 因为过热降频约 ${throttle}%（${early} → ${late} MHz）`, `CPU slowed down about ${throttle}% from heat (${early} → ${late} MHz)`)); }
   if (run.status === 'canceled') verdict = verdict === 'fail' ? 'fail' : 'canceled';
   return {
     verdict, reasons, cpuMax, gpuMax, throttle, clockStart: early, clockEnd: late,
-    cpuPowerMax: max(vals('cpuPower')), cpuFanMax: max(vals('cpuFan')),
+    cpuPowerMax: max(vals('cpuPower')), cpuFanMax: max(vals('cpuFan')), gpuLoadAvg,
+    vram: run.gpu && g ? { testedMB: g.vramTestedMB, rounds: g.rounds, errors: g.errors } : null,
     seconds: Math.round((tN - t0) / 1000), noTemp: run.cpu === false ? gpuMax == null : cpuMax == null,
   };
 }
@@ -91,4 +106,4 @@ function startCpuLoad(threads = os.cpus().length || 4) {
   return { threads, stop: () => { Atomics.store(stop, 0, 1); setTimeout(() => workers.forEach(w => w.terminate().catch(() => {})), 500); } };
 }
 
-module.exports = { pick, evaluate, thin, startCpuLoad };
+module.exports = { pick, evaluate, thin, startCpuLoad, vramOf };

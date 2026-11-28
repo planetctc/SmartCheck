@@ -146,7 +146,9 @@ function systemSection(sys) {
     const V = { pass: ['ok', B('通过', 'Pass')], warn: ['warn', B('需要注意', 'Caution')], fail: ['bad', B('不通过', 'Fail')], canceled: ['', B('未完成', 'Not finished')] }[br.verdict] || ['', ''];
     rows.push([B('烤机测试', 'Burn-in'), `<b class="${V[0]}">${V[1]}</b> · ${Math.round((br.seconds || 0) / 60)} ${L('分钟', 'min')}${bn.cpu === false ? L(' · 显卡', ' · GPU') : bn.gpu ? ' · CPU + GPU' : ' · CPU'}${bn.cpu !== false && bn.level === 'high' ? L(' · 高强度', ' · high intensity') : bn.level === 'std' ? L(' · 标准', ' · standard') : ''}`
       + `<span class="sub">${[br.cpuMax != null ? `CPU ${L('最高', 'max')} ${br.cpuMax} °C` : '', bn.gpu && br.gpuMax != null ? `GPU ${L('最高', 'max')} ${br.gpuMax} °C` : '',
-        br.clockStart ? `${br.clockStart} → ${br.clockEnd || '-'} MHz` : '', ...(br.reasons || [])].filter(Boolean).map(esc).join(' · ')}</span>`]);
+        br.clockStart ? `${br.clockStart} → ${br.clockEnd || '-'} MHz` : '',
+        bn.gpu && br.vram && !br.vram.errors ? L(`显存检测 ${br.vram.testedMB >= 1024 ? Math.round(br.vram.testedMB / 102.4) / 10 + ' GB' : br.vram.testedMB + ' MB'} 没有错误`, `VRAM check ${br.vram.testedMB >= 1024 ? Math.round(br.vram.testedMB / 102.4) / 10 + ' GB' : br.vram.testedMB + ' MB'} no errors`) : '',
+        ...(br.reasons || [])].filter(Boolean).map(esc).join(' · ')}</span>`]);
   }
   const mm = pc.mem;
   if (mm && on('memtest')) rows.push([B('内存测试', 'Memory test'), mm.errors ? `<b class="bad">${L(`发现 ${mm.errors} 个错误`, `${mm.errors} errors`)}</b>` : `<b class="ok">${B('没有错误', 'No errors')}</b>`
